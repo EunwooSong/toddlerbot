@@ -26,6 +26,5 @@ RewardScales.stand_still = 1.0
 RewardScales.align_ground = 1.0
 RewardScales.energy = 0.05
 
-EnvConfig.use_basic_obs = False
-heat2torque.envs.config.DomainRandConfig.ambient_temp = [25.0, 28.0]
-heat2torque.envs.config.DomainRandConfig.motor_temp = [25.0, 28.0]
+TJXDomainRandConfig.ambient_temp = [22.0, 28.0]
+TJXDomainRandConfig.motor_temp = [25.0, 55.0]

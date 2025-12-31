@@ -456,11 +456,7 @@ def train(
         path = os.path.abspath(os.path.join(exp_folder_path, f"{current_step}"))
         orbax_checkpointer.save(path, params, force=True, save_args=save_args)
         policy_path = os.path.join(path, "policy")
-        model.save_params(policy_path,  {
-            'normalizer': params[0],
-            'policy': params[1],
-            'value': params[2],
-        })
+        model.save_params(policy_path, params)
 
     learning_rate_schedule_fn = optax.cosine_decay_schedule(
         train_cfg.learning_rate,

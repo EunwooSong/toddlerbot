@@ -2,12 +2,16 @@
 
 # Run RL experiments sequentially
 # Define the different configurations for each experiment
+export MUJOCO_GL="egl"
+export XLA_PYTHON_CLIENT_MEM_FRACTION=".15"
+export JAX_TRACEBACK_FILTERING="off"
+unset LD_LIBRARY_PATH
 
 robots=("toddlerbot")
 envs=("_T_Walk")
 #restore=("./results/toddlerbot__T_Walk_ppo_PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0_20251120_195130/101068800")
 config_overrides=(
-    "PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,EnvConfig.use_basic_obs=False"
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,EnvConfig.use_basic_obs=True"
 )
 
 # Iterate over all configurations
