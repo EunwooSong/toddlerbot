@@ -164,6 +164,7 @@ def log_metrics(
         if (
             "episode_reward" not in metric_name
             and "avg_episode_length" not in metric_name
+            and "temp_" not in metric_name
         ):
             log_string += f"""{f"{metric_name}:":>{pad}} {value:.4f}\n"""
 
@@ -176,6 +177,29 @@ def log_metrics(
         )
     if "eval/avg_episode_length" in metrics:
         log_string += f"""{"Mean episode length:":>{pad}} {metrics["eval/avg_episode_length"]:.3f}\n"""
+
+    # --- 온도 지표 요약 출력 (추가된 부분) ---
+    # eval/ 경로가 붙어있을 경우와 아닌 경우 모두 대응
+    t_c_avg = metrics.get("eval/temp_core_avg") or metrics.get("temp_core_avg")
+    t_c_max = metrics.get("eval/temp_core_max") or metrics.get("temp_core_max")
+    t_c_min = metrics.get("eval/temp_core_min") or metrics.get("temp_core_min")
+    t_h_avg = metrics.get("eval/temp_housing_avg") or metrics.get("temp_housing_avg")
+    t_h_max = metrics.get("eval/temp_housing_max") or metrics.get("temp_housing_max")
+    t_h_min = metrics.get("eval/temp_housing_min") or metrics.get("temp_housing_min")
+
+    if t_c_avg is not None:
+        log_string += f"""{"Core Temp (Avg):":>{pad}} {t_c_avg:.2f}\n"""
+    if t_c_max is not None:
+        log_string += f"""{"Core Temp (Max):":>{pad}} {t_c_max:.2f}\n"""
+    if t_c_min is not None:
+        log_string += f"""{"Core Temp (Min):":>{pad}} {t_c_min:.2f}\n"""
+    if t_h_avg is not None:
+        log_string += f"""{"Housing Temp (Avg):":>{pad}} {t_h_avg:.2f}\n"""
+    if t_h_max is not None:
+        log_string += f"""{"Housing Temp (Max):":>{pad}} {t_h_max:.2f}\n"""
+    if t_h_min is not None:
+        log_string += f"""{"Housing Temp (Min):":>{pad}} {t_h_min:.2f}\n"""
+    # ---------------------------------------
 
     if num_steps > 0 and num_total_steps > 0:
         log_string += (
