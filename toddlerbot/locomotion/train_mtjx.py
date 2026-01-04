@@ -183,26 +183,6 @@ def log_metrics(
             f"""{"ETA:":>{pad}} {(time_elapsed / num_steps) * (num_total_steps - num_steps):.1f}s\n"""
         )
 
-    # --- 온도 지표 요약 출력 (추가된 부분) ---
-    # eval/ 경로가 붙어있을 경우와 아닌 경우 모두 대응
-    t_avg = metrics.get("eval/temp_avg") or metrics.get("temp_avg")
-    t_max = metrics.get("eval/temp_max") or metrics.get("temp_max")
-    t_min = metrics.get("eval/temp_min") or metrics.get("temp_min")
-
-    if t_avg is not None:
-        log_string += f"""{"Motor Temp (Avg):":>{pad}} {t_avg:.2f}\n"""
-    if t_max is not None:
-        log_string += f"""{"Motor Temp (Max):":>{pad}} {t_max:.2f}\n"""
-    if t_min is not None:
-        log_string += f"""{"Motor Temp (Min):":>{pad}} {t_min:.2f}\n"""
-    # ---------------------------------------
-
-    if num_steps > 0 and num_total_steps > 0:
-        log_string += (
-            f"""{"Computation:":>{pad}} {(num_steps / time_elapsed):.1f} steps/s\n"""
-            f"""{"ETA:":>{pad}} {(time_elapsed / num_steps) * (num_total_steps - num_steps):.1f}s\n"""
-        )
-
     print(log_string)
 
     return log_data
