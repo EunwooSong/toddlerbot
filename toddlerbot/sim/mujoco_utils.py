@@ -289,11 +289,11 @@ class MuJoCoRenderer:
         time.sleep(1)
 
         # Load the video clips using moviepy
-        clips = [VideoFileClip(path) for path in video_paths]
+        #clips = [VideoFileClip(path) for path in video_paths]
         # Arrange the clips in a 2x2 grid
-        final_video = clips_array([[clips[0], clips[1]], [clips[2], clips[3]]])
+        #final_video = clips_array([[clips[0], clips[1]], [clips[2], clips[3]]])
         # Save the final concatenated video
-        final_video.write_videofile(os.path.join(exp_folder_path, name))
+        #final_video.write_videofile(os.path.join(exp_folder_path, name))
 
     def anim_pose_callback(self, data: Any):
         """Processes animation pose data and updates the animation data dictionary.

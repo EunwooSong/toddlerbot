@@ -4,7 +4,7 @@
 # Define the different configurations for each experiment
 export MUJOCO_GL="egl"
 export XLA_PYTHON_CLIENT_MEM_FRACTION=".15"
-export JAX_TRACEBACK_FILTERING="off"
+#export JAX_TRACEBACK_FILTERING="off"
 unset LD_LIBRARY_PATH
 
 robots=("toddlerbot")
