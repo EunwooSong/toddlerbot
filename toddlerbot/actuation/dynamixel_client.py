@@ -24,6 +24,7 @@ ADDR_PRESENT_CURRENT = 126
 ADDR_PRESENT_POS_VEL = 128
 ADDR_PRESENT_POS_VEL_CUR = 126
 ADDR_PRESENT_V_IN = 144
+ADDR_PRESENT_TEMP = 146
 
 # Data Byte Length
 LEN_MODEL_NUMBER = 2
@@ -35,11 +36,26 @@ LEN_PRESENT_POS_VEL_CUR = 10
 LEN_GOAL_POSITION = 4
 LEN_GOAL_CURRENT = 2
 LEN_PRESENT_V_IN = 2
+LEN_PRESENT_TEMP = 1
 
 DEFAULT_POS_SCALE = 2.0 * np.pi / 4096  # 0.088 degrees
 # See http://emanual.robotis.com/docs/en/dxl/x/xh430-v210/#goal-velocity
 DEFAULT_VEL_SCALE = 0.229 * 2.0 * np.pi / 60.0  # 0.229 rpm
 DEFAULT_V_IN_SCALE = 0.1
+DEFAULT_PRESENT_TEMP_SCALE = 1.0
+
+# Indirect Address 설정
+ADDR_INDIRECT_ADDRESS = 168  # 간접 주소 설정 시작 번지
+ADDR_INDIRECT_DATA = 224     # 설정된 간접 주소의 데이터가 모이는 시작 번지
+
+# Bulk read할 데이터의 총 길이
+LEN_INDIRECT_DATA_SET = 11
+
+# 각 항목별 offset 정의
+OFFSET_POS = 0
+OFFSET_VEL = 4
+OFFSET_CUR = 8
+OFFSET_TEMP = 10
 
 
 def dynamixel_cleanup_handler():
@@ -138,8 +154,9 @@ class DynamixelClient:
             self.port_handler, self.packet_handler
         )
         for motor_id in self.motor_ids:
+            # ADDR 
             success = self._bulk_reader.addParam(
-                motor_id, ADDR_PRESENT_POS_VEL_CUR, LEN_PRESENT_POS_VEL_CUR
+                motor_id, ADDR_INDIRECT_DATA, LEN_INDIRECT_DATA_SET
             )
             if not success:
                 raise OSError(
@@ -190,6 +207,7 @@ class DynamixelClient:
 
         # Start with all motors enabled.  NO, I want to set settings before enabled
         # self.set_torque_enabled(self.motor_ids, True)
+        # self.setup_indirect_address()
 
     def disconnect(self):
         """Disconnects from the Dynamixel device."""
@@ -207,6 +225,190 @@ class DynamixelClient:
         self.port_handler.closePort()
         if self in self.OPEN_CLIENTS:
             self.OPEN_CLIENTS.remove(self)
+
+    # 간접 주소 설정
+    def setup_indirect_address(
+        self,
+        retries: int = -1,
+        retry_interval: float = 0.25,
+    ):
+        """간접 주소 매핑을 설정합니다. (set_torque_enabled와 동일 구조)"""
+        
+        # 1. 매핑할 실제 주소 리스트 (총 10바이트)
+        # Position(132~135), Velocity(128~131), Current(126~127)
+        # ADDR_PRESENT_POSITION = 132
+        # ADDR_PRESENT_VELOCITY = 128
+        # ADDR_PRESENT_CURRENT = 126
+        target_addresses = [
+            132, 133, 134, 135, # Present Position
+            128, 129, 130, 131, # Present Velocity
+            126, 127,           # Present Current
+            146                 # Present temperature
+        ]
+        
+        # 2. 매핑 작업은 반드시 토크가 꺼져 있어야 합니다.
+        log("Disabling torque to configure indirect addresses...", header="Dynamixel")
+        self.set_torque_enabled(self.motor_ids, False)
+
+        # 3. 각 바이트 위치(0~9)에 대해 성공할 때까지 재시도
+        for i, target_addr in enumerate(target_addresses):
+            indirect_addr_reg = ADDR_INDIRECT_ADDRESS + (i * 2) # 168, 170, 172...
+            remaining_ids = list(self.motor_ids)
+            current_retries = retries
+            
+            log(f"Mapping offset {i}: Indirect({indirect_addr_reg}) -> Actual({target_addr})", header="Dynamixel")
+            
+            while remaining_ids:
+                remaining_ids = list(
+                    self.write_2byte(
+                        remaining_ids,
+                        target_addr,
+                        indirect_addr_reg,
+                    )
+                )
+                if remaining_ids:
+                    log(
+                        f"Retry mapping offset {i} for IDs: {str(remaining_ids)}",
+                        header="Dynamixel",
+                        level="warning",
+                    )
+                
+                if current_retries == 0:
+                    break
+                
+                if remaining_ids:
+                    time.sleep(retry_interval)
+                    current_retries -= 1
+        
+        log("Indirect address configuration completed.", header="Dynamixel")
+        time.sleep(1)
+
+        self.set_torque_enabled(self.motor_ids, True)
+
+
+
+    # 간접 주소 검증 코드
+    def verify_indirect_data(self):
+        """실제 주소의 데이터와 간접 주소 영역의 데이터가 일치하는지 검증합니다."""
+        log("Starting indirect data verification...", header="Dynamixel")
+        
+        # 검증할 항목: (이름, 실제주소, 간접데이터주소, 바이트길이)
+        verification_items = [
+            ("Position", ADDR_PRESENT_POSITION, 224, 4),
+            ("Velocity", ADDR_PRESENT_VELOCITY, 228, 4),
+            ("Current ", ADDR_PRESENT_CURRENT, 232, 2),
+            ("Temperature ", ADDR_PRESENT_TEMP, 234, 1)
+        ]
+
+        all_matched = True
+
+        for motor_id in self.motor_ids:
+            log(f"--- Checking Motor ID: {motor_id} ---", header="Dynamixel")
+            for name, actual_addr, indirect_addr, length in verification_items:
+                # 1. 실제 주소에서 값 읽기
+                if length == 4:
+                    actual_val, res1, err1 = self.packet_handler.read4ByteTxRx(self.port_handler, motor_id, actual_addr)
+                    indirect_val, res2, err2 = self.packet_handler.read4ByteTxRx(self.port_handler, motor_id, indirect_addr)
+                else:
+                    actual_val, res1, err1 = self.packet_handler.read2ByteTxRx(self.port_handler, motor_id, actual_addr)
+                    indirect_val, res2, err2 = self.packet_handler.read2ByteTxRx(self.port_handler, motor_id, indirect_addr)
+
+                # 2. 결과 비교
+                if res1 == self.dxl.COMM_SUCCESS and res2 == self.dxl.COMM_SUCCESS:
+                    if actual_val == indirect_val:
+                        log(f"[{name}] MATCH: {float(unsigned_to_signed(actual_val, 4))}", header="Dynamixel")
+                    else:
+                        all_matched = False
+                        log(f"[{name}] MISMATCH! Actual: {actual_val} != Indirect: {indirect_val}", 
+                            header="Dynamixel", level="error")
+                else:
+                    all_matched = False
+                    log(f"[{name}] Communication failed during verification.", header="Dynamixel", level="error")
+
+        if all_matched:
+            log("All indirect data successfully matched with actual data.", header="Dynamixel")
+        else:
+            log("Verification failed. Some data points do not match.", header="Dynamixel", level="warning")
+        
+        return all_matched
+
+    def read_indirect_motor_state(
+        self, retries: int = 0
+    ) -> Tuple[float, npt.NDArray[np.float32], npt.NDArray[np.float32], npt.NDArray[np.float32]]:
+        """간접 주소 영역(224번지)에서 11바이트를 읽어 pos, vel, cur, temp로 분리하여 반환합니다."""
+        self.check_connected()
+
+        address = ADDR_INDIRECT_DATA # 224
+        size = LEN_INDIRECT_DATA_SET  # 11
+        
+        # 1. Sync Reader 설정 (없으면 생성)
+        key = (address, size)
+        if key not in self._sync_readers:
+            self._sync_readers[key] = self.dxl.GroupSyncRead(
+                self.port_handler, self.packet_handler, address, size
+            )
+            for motor_id in self.motor_ids:
+                success = self._sync_readers[key].addParam(motor_id)
+                if not success:
+                    raise OSError(
+                        "[Motor ID: {}] Could not add parameter to sync read.".format(
+                            motor_id
+                        )
+                    )
+
+        sync_reader: dynamixel_sdk.GroupSyncRead = self._sync_readers[key]
+
+        # 2. 통신 수행 (TX/RX)
+        comm_time = 0.0
+        success = False
+        while not success:
+            comm_result = sync_reader.txPacket()
+            comm_time = time.time()
+            if comm_result == self.dxl.COMM_SUCCESS:
+                comm_result = sync_reader.rxPacket()
+            
+            success = self.handle_packet_result(comm_result, context="sync_read_indirect")
+            if retries == 0 or success: break
+            retries -= 1
+
+        # 3. 데이터 추출 및 파싱
+        num_motors = len(self.motor_ids)
+        pos_arr = np.zeros(num_motors, dtype=np.float32)
+        vel_arr = np.zeros(num_motors, dtype=np.float32)
+        cur_arr = np.zeros(num_motors, dtype=np.float32)
+        temp_arr = np.zeros(num_motors, dtype=np.float32)
+
+        if self._cur_scale_arr is None:
+            self._cur_scale_arr = self.get_cur_scale()
+
+        errored_ids = []
+        for i, motor_id in enumerate(self.motor_ids):
+            # 11바이트 전체가 사용 가능한지 확인
+            if not sync_reader.isAvailable(motor_id, address, size):
+                errored_ids.append(motor_id)
+                continue
+
+            # --- 데이터 커팅 (getData 사용) ---
+            # Position: 오프셋 0, 길이 4
+            pos_raw = sync_reader.getData(motor_id, address + OFFSET_POS, LEN_PRESENT_POSITION)
+            pos_arr[i] = float(unsigned_to_signed(pos_raw, LEN_PRESENT_POSITION)) * DEFAULT_POS_SCALE
+
+            # Velocity: 오프셋 4, 길이 4
+            vel_raw = sync_reader.getData(motor_id, address + OFFSET_VEL, LEN_PRESENT_VELOCITY)
+            vel_arr[i] = float(unsigned_to_signed(vel_raw, LEN_PRESENT_VELOCITY)) * DEFAULT_VEL_SCALE
+
+            # Current: 오프셋 8, 길이 2
+            cur_raw = sync_reader.getData(motor_id, address + OFFSET_CUR, LEN_PRESENT_CURRENT)
+            cur_arr[i] = float(unsigned_to_signed(cur_raw, LEN_PRESENT_CURRENT)) * self._cur_scale_arr[i]
+
+            # Temperature: 오프셋 10, 길이 1
+            temp_raw = sync_reader.getData(motor_id, address + OFFSET_TEMP, LEN_PRESENT_TEMP)
+            temp_arr[i] = float(unsigned_to_signed(temp_raw, LEN_PRESENT_TEMP)) * DEFAULT_PRESENT_TEMP_SCALE
+            
+        if errored_ids:
+            log(f"Sync Read failed for IDs: {errored_ids}", header="Dynamixel", level="error")
+
+        return comm_time, pos_arr, vel_arr, cur_arr, temp_arr
 
     def set_torque_enabled(
         self,
@@ -298,21 +500,27 @@ class DynamixelClient:
         comm_time, data_dict = self.bulk_read(["pos", "vel"], retries=retries)
         return comm_time, data_dict["pos"].copy(), data_dict["vel"].copy()
 
-    def read_pos_vel_cur(
+    def read_motor_state(
         self, retries: int = 0
     ) -> Tuple[
         float, npt.NDArray[np.float32], npt.NDArray[np.float32], npt.NDArray[np.float32]
     ]:
         # NEED to update line 115 and 349 if calling this function
         """Returns the current positions and velocities."""
-        comm_time, data_dict = self.bulk_read(["pos", "vel", "cur"], retries=retries)
+        comm_time, data_dict = self.bulk_read(["pos", "vel", "cur", "temp"], retries=retries)
         return (
             comm_time,
             data_dict["pos"].copy(),
             data_dict["vel"].copy(),
             data_dict["cur"].copy(),
+            data_dict["temp"].copy(),
         )
-
+    
+    # feat: 온도 읽기 추가
+    def read_temp(self, retries: int = 0) -> Tuple[float, npt.NDArray[np.float32]]:
+        """Reads the input voltage to the motors."""
+        return self.sync_read(ADDR_PRESENT_TEMP, LEN_PRESENT_TEMP, DEFAULT_PRESENT_TEMP_SCALE)
+    
     def write_desired_pos(
         self, motor_ids: Sequence[int], positions: npt.NDArray[np.float32]
     ):
@@ -380,6 +588,38 @@ class DynamixelClient:
                 errored_ids.append(motor_id)
         return errored_ids
 
+    def write_2byte(
+        self,
+        motor_ids: Sequence[int],
+        value: int,
+        address: int,
+    ) -> Sequence[int]:
+        """Writes a value to the motors.
+
+        Args:
+            motor_ids: The motor IDs to write to.
+            value: The value to write to the control table.
+            address: The control table address to write to.
+
+        Returns:
+            A list of IDs that were unsuccessful.
+        """
+        self.check_connected()
+        errored_ids: List[int] = []
+        for motor_id in motor_ids:
+            comm_result, dxl_error = self.packet_handler.write2ByteTxRx(
+                self.port_handler, motor_id, address, value
+            )
+            success = self.handle_packet_result(
+                comm_result,
+                dxl_error,
+                motor_id,
+                context="write_byte",
+            )
+            if not success:
+                errored_ids.append(motor_id)
+        return errored_ids
+
     # @profile()
     def bulk_read(
         self, attr_list: List[str], retries: int
@@ -425,7 +665,7 @@ class DynamixelClient:
         for i, motor_id in enumerate(self.motor_ids):
             # Check if the data is available.
             available = self._bulk_reader.isAvailable(
-                motor_id, ADDR_PRESENT_POS_VEL_CUR, LEN_PRESENT_POS_VEL_CUR
+                motor_id, ADDR_INDIRECT_DATA, LEN_INDIRECT_DATA_SET
             )
             if not available:
                 errored_ids.append(motor_id)
@@ -433,7 +673,7 @@ class DynamixelClient:
 
             if "pos" in attr_list:
                 data_unsigned = self._bulk_reader.getData(
-                    motor_id, ADDR_PRESENT_POSITION, LEN_PRESENT_POSITION
+                    motor_id, ADDR_INDIRECT_DATA + OFFSET_POS, LEN_PRESENT_POSITION
                 )
                 data_signed = unsigned_to_signed(
                     data_unsigned,
@@ -443,7 +683,7 @@ class DynamixelClient:
 
             if "vel" in attr_list:
                 data_unsigned = self._bulk_reader.getData(
-                    motor_id, ADDR_PRESENT_VELOCITY, LEN_PRESENT_VELOCITY
+                    motor_id, ADDR_INDIRECT_DATA + OFFSET_VEL, LEN_PRESENT_VELOCITY
                 )
                 data_signed = unsigned_to_signed(
                     data_unsigned,
@@ -453,7 +693,7 @@ class DynamixelClient:
 
             if "cur" in attr_list:
                 data_unsigned = self._bulk_reader.getData(
-                    motor_id, ADDR_PRESENT_CURRENT, LEN_PRESENT_CURRENT
+                    motor_id, ADDR_INDIRECT_DATA + OFFSET_CUR, LEN_PRESENT_CURRENT
                 )
                 data_signed = unsigned_to_signed(
                     data_unsigned,
@@ -463,6 +703,12 @@ class DynamixelClient:
                     self._cur_scale_arr = self.get_cur_scale()
 
                 self._data_dict["cur"][i] = float(data_signed) * self._cur_scale_arr[i]
+                 
+            if "temp" in attr_list:
+                data_unsigned = self._bulk_reader.getData(
+                   motor_id, ADDR_INDIRECT_DATA + OFFSET_TEMP, LEN_PRESENT_TEMP
+                )
+                self._data_dict["temp"][i] = float(data_unsigned) * DEFAULT_PRESENT_TEMP_SCALE
 
         if errored_ids:
             log(

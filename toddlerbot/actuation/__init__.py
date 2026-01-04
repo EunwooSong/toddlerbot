@@ -12,6 +12,9 @@ class JointState:
     vel: float = 0.0
     tor: float = 0.0
 
+    # Add Thermal
+    temp: int = 0
+
 
 class BaseController(ABC):
     """Base class for motor controllers"""

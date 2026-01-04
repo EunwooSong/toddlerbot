@@ -13,6 +13,8 @@ import numpy as np
 import numpy.typing as npt
 from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
+import gin
+from toddlerbot.utils.misc_utils import dataclass2dict, parse_value
 
 from toddlerbot.policies import BasePolicy, get_policy_class, get_policy_names
 from toddlerbot.policies.balance_pd import BalancePDPolicy
@@ -41,6 +43,9 @@ from toddlerbot.visualization.vis_plot import (
     plot_motor_vel_tor_mapping,
     # plot_path_tracking,
 )
+
+# HeatState 정보 추가
+from heat2torque.envs.base import HeatState
 
 # from toddlerbot.utils.misc_utils import profile
 
@@ -72,9 +77,10 @@ dynamic_import_policies("toddlerbot.policies")
 def plot_results(
     robot: Robot,
     loop_time_list: List[List[float]],
-    obs_list: List[Obs],
+    obs_list: List[Obs], # TODO: ThermalOBS 추가할 것 (DONE)
     control_inputs_list: List[Dict[str, float]],
     motor_angles_list: List[Dict[str, float]],
+    heat_state_list: List[HeatState],
     exp_folder_path: str,
 ):
     """Generates and saves various plots to visualize the performance and behavior of a robot during an experiment.
@@ -85,6 +91,7 @@ def plot_results(
         obs_list (List[Obs]): A list of observations recorded during the experiment.
         control_inputs_list (List[Dict[str, float]]): A list of dictionaries containing control inputs applied to the robot.
         motor_angles_list (List[Dict[str, float]]): A list of dictionaries containing motor angles recorded during the experiment.
+        heat_state_list (List[HeatState]): A list of dictionaries containing motor temperatures recorded during the experiment.
         exp_folder_path (str): The path to the folder where the plots will be saved.
     """
     loop_time_dict: Dict[str, List[float]] = {
@@ -124,6 +131,10 @@ def plot_results(
     motor_pos_dict: Dict[str, List[float]] = {}
     motor_vel_dict: Dict[str, List[float]] = {}
     motor_tor_dict: Dict[str, List[float]] = {}
+    # feat: Add temp dict
+    motor_temp_dict: Dict[str, List[float]] = {}  # 관측값
+    heatout_housing_dict: Dict[str, List[float]] = {}     # Sim상 계산된 heatout 값
+
     for i, obs in enumerate(obs_list):
         time_obs_list.append(obs.time)
         # lin_vel_obs_list.append(obs.lin_vel)
@@ -139,14 +150,22 @@ def plot_results(
                 motor_pos_dict[motor_name] = []
                 motor_vel_dict[motor_name] = []
                 motor_tor_dict[motor_name] = []
+                motor_temp_dict[motor_name] = []
+                heatout_housing_dict[motor_name] = []
 
             # Assume the state fetching is instantaneous
             time_seq_dict[motor_name].append(float(obs.time))
             time_seq_ref_dict[motor_name].append(float(obs.time))
+
             # time_seq_ref_dict[motor_name].append(i * policy.control_dt)
             motor_pos_dict[motor_name].append(obs.motor_pos[j])
             motor_vel_dict[motor_name].append(obs.motor_vel[j])
             motor_tor_dict[motor_name].append(obs.motor_tor[j])
+
+            motor_temp_dict[motor_name].append(obs.motor_temp[j])
+
+            # obs와 동일한 shape, 
+            heatout_housing_dict[motor_name].append(heat_state_list[i][j])
 
     action_dict: Dict[str, List[float]] = {}
     joint_pos_ref_dict: Dict[str, List[float]] = {}
@@ -250,6 +269,27 @@ def plot_results(
         y_label="Torque (Nm) or Current (mA)",
         file_name="motor_tor_tracking",
     )
+
+    # feat: Tracking temp
+    # 임시로, 20-80의 범위를 추가로 설정.
+    temp_limits = robot.joint_limits
+    for k, v in temp_limits.items():
+        v = [20.0, 85.0]
+
+    # TODO: Thermal OBS에 대한 값 추가할 것.
+    # 시뮬레이션 상에서 계산된 것 
+    plot_joint_tracking(
+        time_seq_dict,
+        time_seq_ref_dict,
+        motor_temp_dict,
+        heatout_housing_dict, # ref
+        temp_limits,
+        save_path=exp_folder_path,
+        y_label="Tempetuator (℃)",
+        file_name="motor_temp_tracking",
+        line_suffix = ["_obs", "_sim"]
+    )
+
     plot_joint_tracking_single(
         time_seq_dict,
         motor_vel_dict,
@@ -283,12 +323,19 @@ def run_policy(
     obs_list: List[Obs] = []
     control_inputs_list: List[Dict[str, float]] = []
     motor_angles_list: List[Dict[str, float]] = []
+    motor_tor_list = []
+    heat_state_list = []
+    obs_heat_list = []
+    cool_down_list = []
 
     n_steps_total = (
         float("inf")
         if "real" in sim.name and "fixed" not in policy.name
         else policy.n_steps_total
     )
+
+    # 이번만 20분간 step 진행!
+    n_steps_total=50*60*20
     p_bar = tqdm(total=n_steps_total, desc="Running the policy")
     start_time = time.time()
     step_idx = 0
@@ -339,11 +386,12 @@ def run_policy(
                 sim.dynamixel_controller.disable_motors(policy.disable_motor_indices)
                 policy.toggle_motor = False
 
+            # (DONE) TODO: 온도 센서를 policy obs로 넣기 위해 policy.step을 수정해야함.
+            # motor_temp가 그 정보임
             control_inputs, motor_target = policy.step(obs, "real" in sim.name)
-
             inference_time = time.time()
 
-            motor_angles: Dict[str, float] = {}
+            motor_angles: Dict[str, float] = {} 
             for motor_name, motor_angle in zip(robot.motor_ordering, motor_target):
                 motor_angles[motor_name] = motor_angle
 
@@ -356,6 +404,12 @@ def run_policy(
             obs_list.append(obs)
             control_inputs_list.append(control_inputs)
             motor_angles_list.append(motor_angles)
+
+            # heat state 저장
+            heat_state_list.append(sim.get_motor_temp().st_t_housing)
+
+            # 측정된 모터 온도 저장
+            # obs_heat_list.append(obs.motor_temp)
 
             step_idx += 1
 
@@ -381,6 +435,44 @@ def run_policy(
             if ("real" in sim.name or vis_type == "view") and time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 
+        #try: 
+            # cool_down_list = []
+            # if "real" in sim.name:
+            #     log("Record Motor Temperature Cool Down (time, mA, temp)", header=header_name)
+            #     step_idx = 0
+            #     time_until_next_step = 0.0
+            #     start_time = time.time()
+            #     print("wait 5 sec...")
+            #     time.sleep(5)
+            #     sim.dynamixel_controller.disable_motors()
+                
+            #     print("desabled... wait 3 sec...")
+            #     time.sleep(5)
+            #     while step_idx < 45000:
+            #         step_start = time.time()
+
+            #         # Get the latest state from the queue
+            #         obs = sim.get_observation()
+            #         obs.time -= start_time
+
+            #         # 시간, 모터 전류(mA), 모터 온도 
+            #         cool_down_list.append((obs.time, obs.motor_tor, obs.motor_temp))
+
+            #         step_idx += 1
+
+            #         p_bar_steps = int(1 / policy.control_dt)
+            #         if step_idx % p_bar_steps == 0:
+            #             p_bar.update(p_bar_steps)
+
+            #         step_end = time.time()
+
+
+            #         time_until_next_step = start_time + policy.control_dt * step_idx - step_end
+            #         if ("real" in sim.name or vis_type == "view") and time_until_next_step > 0:
+            #             time.sleep(time_until_next_step)
+        # except Exception as ex:
+        #     log(f"Error. Skip cooldown logging task... {ex}", header=header_name)
+    
     except KeyboardInterrupt:
         log("KeyboardInterrupt recieved. Closing...", header=header_name)
 
@@ -399,10 +491,18 @@ def run_policy(
 
         sim.close()
 
+    # 저장할 데이터 추출
+    obs_heat_list = [obs.motor_temp for obs in obs_list]
+    motor_tor_list = [obs.motor_tor for obs in obs_list]
+
     log_data_dict: Dict[str, Any] = {
-        "obs_list": obs_list,
+        "obs_list": obs_list,               # [(스텝마다 여러 정보들), ...] # obs_list[0].time <- elapsed_time에 해당함
         "control_inputs_list": control_inputs_list,
         "motor_angles_list": motor_angles_list,
+        "heat_state_list": heat_state_list, # heat_state_list 또한 저장, 시각화 X, 단순 저장 진행
+        "obs_heat_list": obs_heat_list,     # [(모터들의 온도 list), ...]
+        "motor_tor_list": motor_tor_list,   # [(모터들의 전류 list), ...]
+        "cool_down_list": cool_down_list,   # [(시간, 모터 전류(mA), 모터 온도), ...]
     }
 
     if isinstance(policy, SysIDFixedPolicy):
@@ -493,6 +593,7 @@ def run_policy(
             obs_list,
             control_inputs_list,
             motor_angles_list,
+            heat_state_list,
             exp_folder_path,
         )
 
@@ -575,7 +676,19 @@ def main(args=None):
         default=True,
         help="Skip the plot functions.",
     )
+    parser.add_argument(
+        "--config-override",
+        type=str,
+        default="",
+        help="Override config parameters (e.g., SimConfig.timestep=0.01 ObsConfig.frame_stack=10)",
+    )
     args = parser.parse_args(args)
+
+    # Bind parameters from --config_override
+    if len(args.config_override) > 0:
+        for override in args.config_override.split(","):
+            key, value = override.split("=", 1)  # Split into key-value pair
+            gin.bind_parameter(key, parse_value(value))
 
     robot = Robot(args.robot)
 
@@ -657,6 +770,7 @@ def main(args=None):
         fixed_command = None
         if len(args.command) > 0:
             fixed_command = np.array(args.command.split(" "), dtype=np.float32)
+            print(fixed_command)
 
         policy = PolicyClass(
             args.policy, robot, init_motor_pos, ip=args.ip, fixed_command=fixed_command

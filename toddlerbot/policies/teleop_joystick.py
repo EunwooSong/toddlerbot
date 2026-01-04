@@ -95,45 +95,45 @@ class TeleopJoystickPolicy(BasePolicy, policy_name="teleop_joystick"):
         self.reset_policy = ResetPDPolicy(
             "reset_pd", robot, init_motor_pos, **balance_kwargs
         )
-        if robot.has_gripper:
-            self.pick_policy = DPPolicy(
-                "pick",
-                robot,
-                init_motor_pos,
-                ckpt="20250110_204554",
-                task="pick",
-                **balance_kwargs,
-            )
-            self.hug_policy = self.teleop_policy
-            self.push_cart_policy = self.teleop_policy
-        else:
-            self.pick_policy = self.teleop_policy  # type: ignore
-            self.hug_policy = DPPolicy(  # type: ignore
-                "hug",
-                robot,
-                init_motor_pos,
-                ckpt="20250109_235450",
-                task="hug",
-                **balance_kwargs,
-            )
-            self.push_cart_policy = PushCartPolicy(  # type: ignore
-                "push_cart",
-                robot,
-                init_motor_pos,
-                ckpt="20250106_232754",
-                **balance_kwargs,
-            )
-        self.cuddle_policy = ReplayPolicy(
-            "cuddle", robot, init_motor_pos, run_name="cuddle"
-        )
+        # if robot.has_gripper:
+        #     self.pick_policy = DPPolicy(
+        #         "pick",
+        #         robot,
+        #         init_motor_pos,
+        #         ckpt="20250110_204554",
+        #         task="pick",
+        #         **balance_kwargs,
+        #     )
+        #     self.hug_policy = self.teleop_policy
+        #     self.push_cart_policy = self.teleop_policy
+        # else:
+        #     self.pick_policy = self.teleop_policy  # type: ignore
+        #     self.hug_policy = DPPolicy(  # type: ignore
+        #         "hug",
+        #         robot,
+        #         init_motor_pos,
+        #         ckpt="20250109_235450",
+        #         task="hug",
+        #         **balance_kwargs,
+        #     )
+        #     self.push_cart_policy = PushCartPolicy(  # type: ignore
+        #         "push_cart",
+        #         robot,
+        #         init_motor_pos,
+        #         ckpt="20250106_232754",
+        #         **balance_kwargs,
+        #     )
+        # self.cuddle_policy = ReplayPolicy(
+        #     "cuddle", robot, init_motor_pos, run_name="cuddle"
+        # )
         self.policies = {
             "walk": self.walk_policy,
             "teleop": self.teleop_policy,
             "reset": self.reset_policy,
-            "hug": self.hug_policy,
-            "pick": self.pick_policy,
-            "push_cart": self.push_cart_policy,
-            "cuddle": self.cuddle_policy,
+            #"hug": self.hug_policy,
+            #"pick": self.pick_policy,
+            #"push_cart": self.push_cart_policy,
+            #"cuddle": self.cuddle_policy,
         }
 
         self.need_reset = False

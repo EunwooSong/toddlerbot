@@ -5,6 +5,7 @@ from typing import Dict, Optional
 import numpy as np
 import numpy.typing as npt
 
+from heat2torque.envs.base import HeatState
 
 @dataclass
 class Obs:
@@ -29,6 +30,9 @@ class Obs:
     joint_pos: Optional[npt.NDArray[np.float32]] = None
     joint_vel: Optional[npt.NDArray[np.float32]] = None
 
+    # feat: Add Temp, Optional
+    motor_temp: Optional[npt.NDArray[np.float32]] = None
+
 
 class BaseSim(ABC):
     """Base class for simulation environments"""
@@ -51,6 +55,11 @@ class BaseSim(ABC):
 
     @abstractmethod
     def get_observation(self) -> Obs:
+        pass
+
+    # 추상화 method 추가
+    @abstractmethod
+    def get_motor_temp(self) -> HeatState:
         pass
 
     @abstractmethod

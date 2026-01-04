@@ -18,6 +18,13 @@ from toddlerbot.sim.robot import Robot
 from toddlerbot.utils.file_utils import find_robot_file_path
 from toddlerbot.utils.math_utils import quat2euler, quat_inv, rotate_vec
 
+# feat: heat2torque 결합
+from heat2torque.envs.tjx_env import ThermalJaxEnv
+from heat2torque.utils.actuator import matching_actuator_config
+from heat2torque.envs.config import MTJXConfig
+from heat2torque.envs.base import HeatState
+
+
 
 class MuJoCoSim(BaseSim):
     """A class for the MuJoCo simulation environment."""
@@ -125,9 +132,38 @@ class MuJoCoSim(BaseSim):
 
             self.left_foot_transform = self.get_body_transofrm(self.left_foot_name)
             self.right_foot_transform = self.get_body_transofrm(self.right_foot_name)
-
         except KeyError:
             print("No keyframe named 'home' found in the model.")
+
+        # init tjx env
+        acts = matching_actuator_config(self.robot)
+        # cfg: no, DR
+        cfg = MTJXConfig()
+        # 아래 내용도 나중에 arguments로 받아야함
+        cfg.tjx_cfg.use_basic_obs = True
+        cfg.tjx_cfg.use_derate = True
+        self.tjx_env = ThermalJaxEnv(acts, cfg=cfg, dt=self.dt)
+        self.tjx_cfg = cfg.tjx_cfg
+
+        # 초기 heat_state 설정
+        # 주변 온도는 cfg로 주어졌다고 가정
+        # 모터 초기 온도는 향후 주어진다고 가정
+        # 모터 초기 온도의 housing, core 온도는 동일하다고 가정
+        self.heat_state = HeatState(
+            np.zeros(len(acts)),
+            np.full((len(acts), ), cfg.tjx_cfg.c_a),
+            np.full((len(acts), ), cfg.tjx_cfg.c_a),
+            np.zeros(len(acts)),
+            self.tjx_env.overheat,
+        )
+        # 초기 주변 온도는 arguments로 받아야 함. --init-temp -> gin으로 전달
+    
+    # 하우징의 값이 들어오면, core와 동일하게 온도를 초기화함
+    # def set_motor_temp(self, t_housing):
+    #     self.heat_state = self.heat_state.replace(
+    #         st_t_core= t_housing,
+    #         st_t_housing = t_housing,
+    #     )
 
     def get_body_transofrm(self, body_name: str):
         """Computes the transformation matrix for a specified body.
@@ -331,6 +367,11 @@ class MuJoCoSim(BaseSim):
             torso_euler = self.torso_euler_prev + torso_euler_delta
             self.torso_euler_prev = np.asarray(torso_euler, dtype=np.float32)
 
+        obs = None
+        # 온도 obs추가
+        # feat: housing 값 int로 변환해서 obs로 넣어줌
+        motor_temp = self.heat_state.st_t_housing
+        motor_temp = np.round(motor_temp).astype(np.int32)
         obs = Obs(
             time=time,
             motor_pos=motor_pos_arr,
@@ -342,8 +383,13 @@ class MuJoCoSim(BaseSim):
             euler=torso_euler,
             joint_pos=joint_pos_arr,
             joint_vel=joint_vel_arr,
+            motor_temp=motor_temp
         )
+        
         return obs
+
+    def get_motor_temp(self) -> HeatState:
+        return self.heat_state
 
     def get_mass(self) -> float:
         """Calculate and return the mass of the subtree.
@@ -500,6 +546,19 @@ class MuJoCoSim(BaseSim):
                 self.data.qvel[self.qd_start_idx + self.motor_indices],
                 self.target_motor_angles,
             )
+
+            # tjx_env 적용
+            self.heat_state = self.tjx_env.step_runtime_thermal(
+                self.heat_state,
+                self.data.ctrl,
+                self.dt
+            )
+
+            # derate 사용시, 진행
+            if self.tjx_cfg.use_derate:
+                self.data.ctrl = self.heat_state.st_torque
+
+            # mujoco step 돌림
             mujoco.mj_step(self.model, self.data)
 
         if self.visualizer is not None:
@@ -553,13 +612,16 @@ class MuJoCoSim(BaseSim):
         state_traj = np.array(state_traj, dtype=np.float32).squeeze()[:: self.n_frames]
         # mjSTATE_TIME ｜ mjSTATE_QPOS | mjSTATE_QVEL | mjSTATE_ACT
 
+        # feat: tjx에서 계산된 온도 값 추가 (obs)
+        joint_tmp = self.heat_state.st_t_housing
+
         # joints_config = self.robot.config["joints"]
         joint_state_list: List[Dict[str, JointState]] = []
         for state in state_traj:
             joint_state: Dict[str, JointState] = {}
-            for joint_name in self.robot.joint_ordering:
+            for i, joint_name in enumerate(self.robot.joint_ordering):
                 joint_pos = state[1 + self.model.joint(joint_name).id]
-                joint_state[joint_name] = JointState(time=state[0], pos=joint_pos)
+                joint_state[joint_name] = JointState(time=state[0], pos=joint_pos, temp=joint_tmp[i])
 
             joint_state_list.append(joint_state)
 

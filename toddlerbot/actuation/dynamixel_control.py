@@ -110,6 +110,9 @@ class DynamixelConfig:
     interp_method: str = "cubic"
     return_delay_time: int = 1
 
+    # Add Thermal
+    # present_temp: List[float]
+
 
 class DynamixelController(BaseController):
     """Class for controlling Dynamixel motors."""
@@ -133,6 +136,7 @@ class DynamixelController(BaseController):
 
         self.connect_to_client()
         self.initialize_motors()
+        self.client.setup_indirect_address()
 
         if len(self.config.init_pos) == 0:
             self.init_pos = np.zeros(len(motor_ids), dtype=np.float32)
@@ -392,10 +396,26 @@ class DynamixelController(BaseController):
 
         # log(f"Start... {time.time()}", header="Dynamixel", level="warning")
         state_dict: Dict[int, JointState] = {}
+        temp_arr = []
+
+        # 온도 읽고, 값 읽기
+        # read temperature info
+        # present temperature: 146
+        # size: 1
+        # scale: 1.0
+        # feat: bulk_read에 temp 코드 추가
+
+        #with self.lock:
+        #    _, temp_arr = self.client.read_temp(retries=retries)
+        
+        # retries = 0
+        # Bulk read에 온도도 읽도록 코드 수정 불가
+        # Bulk read는 인접한 정보를 한 번에 받아오기 위함
+        # InDirect Address로 해야하는데, 현재 어려움 -> 코드 짜기 어려움
         with self.lock:
             # time, pos_arr = self.client.read_pos(retries=retries)
             # time, pos_arr, vel_arr = self.client.read_pos_vel(retries=retries)
-            time, pos_arr, vel_arr, cur_arr = self.client.read_pos_vel_cur(
+            time, pos_arr, vel_arr, cur_arr, temp_arr = self.client.read_motor_state(
                 retries=retries
             )
 
@@ -406,8 +426,9 @@ class DynamixelController(BaseController):
         pos_arr -= self.init_pos
 
         for i, motor_id in enumerate(self.motor_ids):
+            # temp가 모터의 현재 온도 정보를 가지고 있음
             state_dict[motor_id] = JointState(
-                time=time, pos=pos_arr[i], vel=vel_arr[i], tor=cur_arr[i]
+                time=time, pos=pos_arr[i], vel=vel_arr[i], tor=cur_arr[i], temp = temp_arr[i]
             )
 
         # log(f"End... {time.time()}", header="Dynamixel", level="warning")

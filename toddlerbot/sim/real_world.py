@@ -9,6 +9,15 @@ from toddlerbot.sim import BaseSim, Obs
 from toddlerbot.sim.robot import Robot
 from toddlerbot.utils.file_utils import find_ports
 
+# feat: heat2torque 결합
+from heat2torque.envs.tjx_env import ThermalJaxEnv
+from heat2torque.utils.actuator import matching_actuator_config, load_motor_params_from_csv
+from heat2torque.envs.config import MTJXConfig
+from heat2torque.envs.base import HeatState
+# 데이터를 받아 분석하기 위해, 처리를 해야 함.
+
+import time
+# dt 계산용
 
 class RealWorld(BaseSim):
     """Real-world robot interface class."""
@@ -43,6 +52,32 @@ class RealWorld(BaseSim):
             "right_gripper_rack",
         ]
 
+        # init tjx env
+        acts = matching_actuator_config(self.robot)
+        # parameter 불러와서 적용
+        load_motor_params_from_csv(acts)
+        # cfg: no, DR
+        cfg = MTJXConfig()
+        # 아래 내용도 나중에 arguments로 받아야함
+        cfg.tjx_cfg.use_basic_obs = True
+        cfg.tjx_cfg.use_derate = True
+        self.tjx_env = ThermalJaxEnv(acts, cfg=cfg)
+        self.tjx_cfg = cfg.tjx_cfg
+
+        # 초기 heat_state 설정
+        # 주변 온도는 cfg로 주어졌다고 가정
+        # 모터 초기 온도는 향후 주어진다고 가정
+        # 모터 초기 온도의 housing, core 온도는 동일하다고 가정
+        self.heat_state = HeatState(
+            np.zeros(len(acts)),
+            np.full((len(acts), ), cfg.tjx_cfg.c_a),
+            np.full((len(acts), ), cfg.tjx_cfg.c_a),
+            np.zeros(len(acts)),
+            self.tjx_env.overheat,
+        )
+
+        # 이전 통신 시간
+        self.prev_comm_time = None
         self.initialize()
 
     def initialize(self) -> None:
@@ -102,8 +137,17 @@ class RealWorld(BaseSim):
                 print(e)
                 self.has_imu = False
 
+        obs = None
         for _ in range(100):
-            self.get_observation()
+            obs = self.get_observation()
+
+        # TODO 측정된 초기 모터 온도값으로, heat_state 초기화
+        self.heat_state = self.heat_state.replace(
+            st_t_core = obs.motor_temp,
+            st_t_housing = obs.motor_temp,
+        )
+        # 루프 시작 전 기준 시점을 현재 obs의 시간으로 설정
+        self.prev_comm_time = obs.time
 
     # @profile()
     def process_motor_reading(self, results: Dict[str, Dict[int, JointState]]) -> Obs:
@@ -126,6 +170,10 @@ class RealWorld(BaseSim):
         motor_pos = np.zeros(len(self.robot.motor_ordering), dtype=np.float32)
         motor_vel = np.zeros(len(self.robot.motor_ordering), dtype=np.float32)
         motor_tor = np.zeros(len(self.robot.motor_ordering), dtype=np.float32)
+
+        # feat: 모터 온도 정보 추가
+        motor_temp = np.zeros(len(self.robot.motor_ordering), dtype=np.float32)
+
         for i, motor_name in enumerate(self.robot.motor_ordering):
             if i == 0:
                 time_curr = motor_state_dict_unordered[motor_name].time
@@ -139,15 +187,21 @@ class RealWorld(BaseSim):
 
             motor_tor[i] = abs(motor_state_dict_unordered[motor_name].tor)
 
+            # feat: 배열에 모터 온도 추가
+            motor_temp[i] = motor_state_dict_unordered[motor_name].temp
+
+        # TODO: 여기서 obs에 온도 값 추가하면 됨
         obs = Obs(
             time=time_curr,
             motor_pos=motor_pos,
             motor_vel=motor_vel,
             motor_tor=motor_tor,
+            motor_temp=motor_temp,
         )
         return obs
 
     def step(self):
+        # 여기서 온도 값?
         pass
 
     # @profile()
@@ -185,11 +239,35 @@ class RealWorld(BaseSim):
 
         obs = self.process_motor_reading(results)
 
+        if self.prev_comm_time is not None:
+            # 현재 통신 시간과 이전 통신 시간의 차이 계산
+            measured_dt = obs.time - self.prev_comm_time
+            
+            # 통신 지터나 에러로 인한 비정상적인 dt 방지 (최대 0.1초 제한)
+            # 기본 dt(1/60)를 fallback으로 사용하거나 clip 적용
+            dt_to_use = np.clip(measured_dt, 1e-4, 0.1)
+        else:
+            # 초기 실행 시에는 기본 설정된 dt 사용
+            dt_to_use = 1/60.0
+
+        # 여기서 온도 계산 진행
+        self.heat_state = self.tjx_env.step_real_thermal(
+            self.heat_state,
+            obs.motor_tor,
+            dt_to_use
+        )
+
+        # 다음 스텝 시간 저장
+        self.prev_comm_time = obs.time
+
         if self.has_imu:
             obs.ang_vel = np.array(results["imu"]["ang_vel"], dtype=np.float32)
             obs.euler = np.array(results["imu"]["euler"], dtype=np.float32)
 
         return obs
+
+    def get_motor_temp(self) -> HeatState:
+        return self.heat_state
 
     # @profile()
     def set_motor_target(self, motor_angles: Dict[str, float]):
