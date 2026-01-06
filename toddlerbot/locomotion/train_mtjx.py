@@ -835,6 +835,15 @@ def main(args=None):
             **kwargs,
         )
 
+    # 내가 추가한거 확인하기, Debug 용 
+    # print(f"init dt: {env.dt}")
+    # print(f"init obs_size : {env.obs_size}")
+    # print(f'use derate: {env.cfg.tjx_cfg.use_derate}')
+    # result = input("Exit?")
+    # if result.lower() in ['y', 'yes']:
+    #     print("Exiting program.")
+    #     return
+
     make_networks_factory = functools.partial(
         ppo_networks.make_ppo_networks,
         policy_hidden_layer_sizes=train_cfg.policy_hidden_layer_sizes,
