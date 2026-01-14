@@ -21,6 +21,7 @@ from toddlerbot.policies.balance_pd import BalancePDPolicy
 from toddlerbot.policies.calibrate import CalibratePolicy
 from toddlerbot.policies.dp_policy import DPPolicy
 from toddlerbot.policies.mjx_policy import MJXPolicy
+from toddlerbot.policies.mtjx_policy import MTJXPolicy
 from toddlerbot.policies.push_cart import PushCartPolicy
 from toddlerbot.policies.record import RecordPolicy
 from toddlerbot.policies.replay import ReplayPolicy
@@ -46,7 +47,7 @@ from toddlerbot.visualization.vis_plot import (
 
 # HeatState 정보 추가
 from heat2torque.envs.base import HeatState
-
+from heat2torque.envs.config import MTJXConfig
 # from toddlerbot.utils.misc_utils import profile
 
 
@@ -334,8 +335,12 @@ def run_policy(
         else policy.n_steps_total
     )
 
-    # 이번만 20분간 step 진행!
-    n_steps_total=50*60*20
+    # 이번만 20분간 step 진행! -> Nope
+    n_steps_total = (
+        float("inf")
+        if "real" in sim.name and "fixed" not in policy.name
+        else policy.n_steps_total
+    )
     p_bar = tqdm(total=n_steps_total, desc="Running the policy")
     start_time = time.time()
     step_idx = 0
@@ -755,6 +760,15 @@ def main(args=None):
 
         policy = PolicyClass(
             args.policy, robot, init_motor_pos, args.ckpt, fixed_command=fixed_command
+        )
+    # MTJX Policy 추가
+    elif issubclass(PolicyClass, MTJXPolicy):
+        fixed_command = None
+        if len(args.command) > 0:
+            fixed_command = np.array(args.command.split(" "), dtype=np.float32)
+
+        policy = PolicyClass(
+            args.policy, robot, init_motor_pos, args.ckpt, fixed_command=fixed_command, 
         )
 
     elif issubclass(PolicyClass, DPPolicy):

@@ -8,7 +8,7 @@ export MUJOCO_GL="egl"
 # export JAX_TRACEBACK_FILTERING="off"
 
 # cd
-cd ~/eunwoo/back/toddlerbot
+# cd ~/eunwoo/back/toddlerbot
 
 # run policy
-python toddlerbot/policies/run_policy.py --robot toddlerbot --policy walk --sim mujoco --no-plot --vis render --config-override "TJXEnvConfig.use_basic_obs=True"
+python toddlerbot/policies/run_policy.py --robot toddlerbot --policy thermal_walk --sim mujoco --vis render --config-override "TJXEnvConfig.use_basic_obs=False"
