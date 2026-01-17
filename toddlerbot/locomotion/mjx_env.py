@@ -322,6 +322,8 @@ class MJXEnv(PipelineEnv):
             self.privileged_obs_size += 4
 
         # noise
+        #print("Why error? ", self.obs_size)
+        #print("Action Mask? ", self.num_action)
         self.obs_noise_scale = self.cfg.noise.obs_noise_scale * jnp.concatenate(
             [
                 jnp.zeros(

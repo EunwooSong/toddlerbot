@@ -18,14 +18,13 @@ envs=("_T_Walk")
 # 따라서, 3!2 = 6가지의 조합에 대해 실험을 진행합니다.
 
 config_overrides=(
-    # bool값인 TJXEnvConfig.use_basic_obs, TJXEnvConfig.use_derate, TJXEnvConfig.use_group_rand를 이용해, 총 6가지의 실험 환경을 세팅합니다.
-    # 그 전에, 환경 변수가 잘 동작하는지 확인합니다. group_rand가 동작하나요?
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,TJXEnvConfig.use_group_rand=False"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,TJXEnvConfig.use_group_rand=True"
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=False,TJXEnvConfig.use_group_rand=False"
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True"
+    # 우리꺼 관측값은 그대로인거랑 관측값도 랜덤한거
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.7"
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.5"
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.3"
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.7"
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.5"
+    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.3"
 )
 
 # Iterate over all configurations

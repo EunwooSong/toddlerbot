@@ -1,0 +1,54 @@
+PPOConfig.episode_length = 950
+ActionConfig.action_parts = ['leg', 'arm', 'waist', 'neck']
+
+CommandsConfig.command_range = [
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+]
+CommandsConfig.deadzone = [0.05]
+CommandsConfig.command_obs_indices = [5, 6, 7]
+
+# Reward parameters
+RewardsConfig.healthy_z_range = [0.1, 0.7]
+
+# Reward parameters
+# Reward scales
+# --- [Core Tracking] Reference Motion 따라가기 (가장 중요) ---
+RewardScales.arm_motor_pos = 5.0    # 팔이 푸쉬업의 핵심이므로 가장 강력하게 추적
+RewardScales.leg_motor_pos = 2.0    # 다리 자세 유지
+RewardScales.waist_motor_pos = 2.0  # 허리 처짐 방지
+RewardScales.neck_motor_pos = 1.0   # 머리 흔들림 방지
+
+# --- [Stability] 제자리 유지 ---
+RewardScales.lin_vel_xy = 1.0       # 제자리에서 미끄러지지 않도록 (수평 속도 0 유도)
+RewardScales.ang_vel_z = 0.5        # 제자리 회전(Yaw) 방지
+RewardScales.feet_contact = 1.0     # 손/발이 땅에 붙어있도록 유도
+
+# --- [Smoothness] 떨림 방지 (너무 크면 로봇이 굳어버림) ---
+# action_rate는 변화량에 대한 페널티이므로 값을 낮게 설정해야 힘을 잘 씁니다.
+RewardScales.arm_action_rate = 0.005
+RewardScales.arm_action_acc = 0.005
+RewardScales.leg_action_rate = 0.005
+RewardScales.leg_action_acc = 0.005
+RewardScales.waist_action_rate = 0.005
+RewardScales.waist_action_acc = 0.005
+
+# --- [Must Disable] 푸쉬업 방해 요소 (반드시 0.0) ---
+RewardScales.lin_vel_z = 0.0        # 상하 움직임 허용 (푸쉬업 필수)
+RewardScales.torso_pos = 0.0        # 몸통 높이 변화 허용
+RewardScales.feet_air_time = 0.0    # 걷기 동작(발 떼기) 유도 금지
+RewardScales.stand_still = 0.0      # 정지 상태 유도 금지
+RewardScales.motor_torque = 0.0     # 큰 힘을 써야 하므로 토크 페널티 제거
+RewardScales.energy = 0.0           # 에너지 페널티 제거
+RewardScales.collision = 0.0        # (선택) 바닥에 몸이 닿을 수도 있으므로 상황 봐서 끔
+
+TJXDomainRandConfig.ambient_temp = [15.0, 35.0]
+TJXDomainRandConfig.motor_temp = [15.0, 24.0]
+TJXDomainRandConfig.spec_t_safe = [0.9, 1.1]
+TJXDomainRandConfig.p_base = [0.9, 1.1]

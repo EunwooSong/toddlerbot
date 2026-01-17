@@ -1,0 +1,76 @@
+PPOConfig.episode_length = 950
+ActionConfig.action_parts = ['leg', 'arm', 'waist', 'neck']
+
+ObsConfig.num_single_obs = 101
+ObsConfig.num_single_privileged_obs = 144
+
+CommandsConfig.command_range = [
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+]
+CommandsConfig.deadzone = [0.05]
+CommandsConfig.command_obs_indices = [5, 6, 7]
+
+# ==========================================================
+# [1] Core Goals: Reference Motion 추적 (가장 강력하게 설정)
+# ==========================================================
+# 로봇의 모든 관절이 Reference 각도와 일치하도록 강제합니다.
+# 값이 매우 커야(10.0 이상) 다른 벌점을 무시하고 움직입니다.
+RewardScales.arm_motor_pos = 10.0
+RewardScales.leg_motor_pos = 10.0
+RewardScales.waist_motor_pos = 10.0
+RewardScales.neck_motor_pos = 5.0
+
+# ==========================================================
+# [2] Root Motion (선택 사항)
+# ==========================================================
+# Reference 데이터에 몸통(Root)의 위치/회전 정보가 정확하다면 켜세요.
+# 만약 데이터가 부정확하다면 0으로 두고 관절(Joint)만 따라하게 해야 합니다.
+# 푸쉬업은 몸통 방향(엎드림)이 중요하므로 켜는 것을 추천합니다.
+RewardScales.torso_quat = 5.0  # 서 있다가 -> 엎드리는 회전을 따라가게 함
+RewardScales.torso_pos = 2.0   # 서 있다가 -> 내려가는 높이를 따라가게 함
+
+# ==========================================================
+# [3] Constraints 제거 (학습 방해 요소 끄기)
+# ==========================================================
+# 아래 항목들은 "일반적인 걷기/서기"를 위한 것이므로 푸쉬업을 방해합니다.
+# 반드시 0.0으로 설정하세요.
+
+RewardScales.lin_vel_xy = 0.0      # 속도 명령 없음
+RewardScales.lin_vel_z = 0.0       # 상하 움직임 허용
+RewardScales.ang_vel_xy = 0.0      # 회전 허용
+RewardScales.ang_vel_z = 0.0       
+RewardScales.feet_air_time = 0.0   # 발 떼기 유도 금지
+RewardScales.stand_still = 1.0     # 가만히 서 있기 금지
+RewardScales.align_ground = 0.0    # 몸 기울임 허용
+RewardScales.feet_contact = 1.0    # 손/발 접촉은 모션 따라가면 자연스럽게 됨
+
+# ==========================================================
+# [4] Penalties 완화 (움직임 허용)
+# ==========================================================
+# 움직임을 억제하는 항들을 극도로 낮추거나 0으로 만듭니다.
+# 학습이 성공적으로 된 후, 떨림을 잡고 싶을 때 조금씩 올리세요.
+
+RewardScales.motor_torque = 0.0        # 힘 무제한 사용
+RewardScales.energy = 0.0              # 에너지 무제한 사용
+
+# Acc/Rate 때문에 학습이 안 될 확률이 높으므로 일단 0으로 둡니다.
+RewardScales.neck_action_rate = 0.0
+RewardScales.neck_action_acc = 0.0
+RewardScales.arm_action_rate = 0.0
+RewardScales.arm_action_acc = 0.0
+RewardScales.waist_action_rate = 0.0
+RewardScales.waist_action_acc = 0.0
+RewardScales.leg_action_rate = 0.0
+RewardScales.leg_action_acc = 0.0
+
+# [중요] 충돌 보상
+# 푸쉬업 중 가슴이나 무릎이 닿을 수 있습니다.
+# 이것이 -1.0이면 닿자마자 학습 종료되므로 0으로 둡니다.
+RewardScales.collision = 0.0
