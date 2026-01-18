@@ -19,13 +19,7 @@ envs=("_T_Walk")
 
 config_overrides=(
     # 우리꺼 관측값은 그대로인거랑 관측값도 랜덤한거
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.7"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.5"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.3"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.7"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.5"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.3"
-)
+    "PPOConfig.num_timesteps=10000000,PPOConfig.num_evals=50,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.2")
 
 # Iterate over all configurations
 for robot in "${robots[@]}"; do

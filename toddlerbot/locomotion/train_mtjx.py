@@ -186,6 +186,8 @@ def log_metrics(
     t_h_avg = metrics.get("eval/temp_housing_avg") or metrics.get("temp_housing_avg")
     t_h_max = metrics.get("eval/temp_housing_max") or metrics.get("temp_housing_max")
     t_h_min = metrics.get("eval/temp_housing_min") or metrics.get("temp_housing_min")
+    t_progress = metrics.get("eval/temp_progress") or metrics.get("temp_progress")
+    t_current_step = metrics.get("eval/temp_current_step") or metrics.get("temp_current_step")
 
     if t_c_avg is not None:
         log_string += f"""{"Core Temp (Avg):":>{pad}} {t_c_avg:.2f}\n"""
@@ -199,6 +201,10 @@ def log_metrics(
         log_string += f"""{"Housing Temp (Max):":>{pad}} {t_h_max:.2f}\n"""
     if t_h_min is not None:
         log_string += f"""{"Housing Temp (Min):":>{pad}} {t_h_min:.2f}\n"""
+    if t_progress is not None:
+        log_string += f"""{"Temp Progress(Curriculum):":>{pad}} {t_progress:.4f}\n"""
+    if t_current_step is not None:
+        log_string += f"""{"Temp Current Step(Curriculum):":>{pad}} {t_current_step:.4f}\n"""
     # ---------------------------------------
 
     if num_steps > 0 and num_total_steps > 0:

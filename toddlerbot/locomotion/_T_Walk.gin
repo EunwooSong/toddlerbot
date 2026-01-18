@@ -26,7 +26,5 @@ RewardScales.stand_still = 1.0
 RewardScales.align_ground = 1.0
 RewardScales.energy = 0.05
 
-TJXDomainRandConfig.ambient_temp = [15.0, 35.0]
-TJXDomainRandConfig.motor_temp = [15.0, 24.0]
 TJXDomainRandConfig.spec_t_safe = [0.9, 1.1]
 TJXDomainRandConfig.p_base = [0.9, 1.1]
