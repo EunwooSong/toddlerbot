@@ -55,7 +55,7 @@ class RealWorld(BaseSim):
         # init tjx env
         acts = matching_actuator_config(self.robot)
         # parameter 불러와서 적용
-        load_motor_params_from_csv(acts)
+        #load_motor_params_from_csv(acts)
         # cfg: no, DR
         cfg = MTJXConfig()
         # 아래 내용도 나중에 arguments로 받아야함

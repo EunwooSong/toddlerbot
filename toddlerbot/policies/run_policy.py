@@ -50,6 +50,12 @@ from heat2torque.envs.base import HeatState
 from heat2torque.envs.config import MTJXConfig
 # from toddlerbot.utils.misc_utils import profile
 
+import threading
+
+def _async_save(self, data_to_save, filename):
+    with open(filename, 'wb') as f:
+        pickle.dump(data_to_save, f)
+    print(f"Saved: {filename}")
 
 def dynamic_import_policies(policy_package: str):
     """Dynamically imports all modules within a specified package.
@@ -336,11 +342,26 @@ def run_policy(
     )
 
     # 이번만 20분간 step 진행! -> Nope
-    n_steps_total = (
-        float("inf")
-        if "real" in sim.name and "fixed" not in policy.name
-        else policy.n_steps_total
-    )
+    # n_steps_total = (
+    #     float("inf")
+    #     if "real" in sim.name and "fixed" not in policy.name
+    #     else policy.n_steps_total
+    # )
+
+    step_counter = 0
+    # 500 step 데이터를 모을 리스트들을 관리할 딕셔너리
+    # 혹은 기존 리스트를 슬라이싱해서 사용할 수도 있지만, 
+    # 독립적인 저장을 위해 별도의 temp_buffer를 만드는 것이 안전합니다.
+    temp_log_buffer = []
+
+
+    exp_name = f"{robot.name}_{policy.name}_{sim.name}"
+    time_str = time.strftime("%Y%m%d_%H%M%S")
+    exp_folder_path = f"results/{exp_name}_{time_str}"
+
+    async_log_path = os.path.join(exp_folder_path, "logs")
+    os.makedirs(async_log_path, exist_ok=True)
+
     p_bar = tqdm(total=n_steps_total, desc="Running the policy")
     start_time = time.time()
     step_idx = 0
@@ -435,6 +456,42 @@ def run_policy(
                 ]
             )
 
+            # 1. 현재 스텝의 데이터를 임시 버퍼에 저장
+            current_step_data = {
+                "obs": obs,
+                "control": control_inputs,
+                "motor_angle": motor_angles,
+                "heat_state": sim.get_motor_temp().st_t_housing
+            }
+            temp_log_buffer.append(current_step_data)
+            step_counter += 1
+
+            if step_idx % 500 == 0:
+                # 파일명: results/.../logs/log_data500.pkl 순서
+                filename = os.path.join(async_log_path, f"log_data{step_idx}.pkl")
+
+                # 현재까지 쌓인 데이터 복사 (성능 저하 방지)
+                # 루프 내에서 사용하는 리스트들의 현재 상태를 딕셔너리로 묶음
+                data_to_save = {
+                    "obs_list": list(obs_list[-500:]),
+                    "control_inputs_list": list(control_inputs_list[-500:]),
+                    "motor_angles_list": list(motor_angles_list[-500:]),
+                    "heat_state_list": list(heat_state_list[-500:])
+                }
+
+                # 비동기 스레드 실행
+                threading.Thread(
+                    target=_async_save, 
+                    args=(None, data_to_save, filename),
+                    daemon=True
+                ).start()
+
+            if step_idx > 0 and step_idx % 100 == 0:
+                # policy 내부의 특정 상태 변수(예: self.phase 등)를 출력하여 값이 튀는지 확인
+                # 예시: print(f"Step {step_idx}: Policy Internal State: {policy.some_variable}")
+                print(step_idx)
+                
+
             time_until_next_step = start_time + policy.control_dt * step_idx - step_end
             # print(f"time_until_next_step: {time_until_next_step * 1000:.2f} ms")
             if ("real" in sim.name or vis_type == "view") and time_until_next_step > 0:
@@ -483,10 +540,6 @@ def run_policy(
 
     finally:
         p_bar.close()
-
-        exp_name = f"{robot.name}_{policy.name}_{sim.name}"
-        time_str = time.strftime("%Y%m%d_%H%M%S")
-        exp_folder_path = f"results/{exp_name}_{time_str}"
 
         os.makedirs(exp_folder_path, exist_ok=True)
 

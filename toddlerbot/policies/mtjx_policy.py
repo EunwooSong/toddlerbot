@@ -20,6 +20,7 @@ from toddlerbot.tools.joystick import Joystick
 from toddlerbot.utils.math_utils import interpolate_action
 # from toddlerbot.utils.misc_utils import profile
 
+import traceback
 from heat2torque.envs.config import MTJXConfig
 
 class MTJXPolicy(BasePolicy, policy_name="mtjx"):
@@ -187,6 +188,9 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
             event.set()
 
     def reset(self):
+        print(f"--- Policy Reset Called! ---")
+        traceback.print_stack()
+
         print(f"Resetting the {self.name} policy...")
         self.obs_history = np.zeros(self.obs_history_size, dtype=np.float32)
         self.phase_signal = np.zeros(2, dtype=np.float32)
