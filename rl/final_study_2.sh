@@ -18,7 +18,8 @@ envs=("_T_Walk")
 # 따라서, 3!2 = 6가지의 조합에 대해 실험을 진행합니다.
 
 # 올라프먼저 학습해야함
-# python toddlerbot/locomotion/train_mtjx.py --robot "$robot" --env "_T_WalkOlaf" --config-override "PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False" --gpu "0" #--restore "$restore"
+#python toddlerbot/locomotion/train_mtjx.py --robot "toddlerbot" --env "_T_WalkOlaf" --config-override "PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False" --gpu "0" #--restore "$restore"
+python toddlerbot/locomotion/train_mtjx.py --robot "toddlerbot" --env "_T_WalkOlaf" --config-override "PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.7" --gpu "0" #--restore "$restore"
 
 config_overrides=(
     # 우리꺼 관측값은 그대로인거랑 관측값도 랜덤한거
