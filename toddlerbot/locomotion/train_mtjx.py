@@ -188,6 +188,8 @@ def log_metrics(
     t_h_min = metrics.get("eval/temp_housing_min") or metrics.get("temp_housing_min")
     t_progress = metrics.get("eval/temp_progress") or metrics.get("temp_progress")
     t_current_step = metrics.get("eval/temp_current_step") or metrics.get("temp_current_step")
+    t_torque_derate= metrics.get("eval/temp_torque_derate") or metrics.get("temp_torque_derate")
+    t_olaf= metrics.get("eval/temp_olaf_reward") or metrics.get("temp_olaf_reward")
 
     if t_c_avg is not None:
         log_string += f"""{"Core Temp (Avg):":>{pad}} {t_c_avg:.2f}\n"""
@@ -205,6 +207,10 @@ def log_metrics(
         log_string += f"""{"Temp Progress(Curriculum):":>{pad}} {t_progress:.4f}\n"""
     if t_current_step is not None:
         log_string += f"""{"Temp Current Step(Curriculum):":>{pad}} {t_current_step:.4f}\n"""
+    if t_torque_derate is not None:
+        log_string += f"""{"Temp Torque Derate(Debugging):":>{pad}} {t_torque_derate:.4f}\n"""
+    if t_olaf is not None:
+        log_string += f"""{"Olaf Reward(Debugging):":>{pad}} {t_olaf:.4f}\n"""
     # ---------------------------------------
 
     if num_steps > 0 and num_total_steps > 0:

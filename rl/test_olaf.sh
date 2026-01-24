@@ -8,7 +8,7 @@ export XLA_PYTHON_CLIENT_MEM_FRACTION=".20"
 unset LD_LIBRARY_PATH
 
 robots=("toddlerbot")
-envs=("_T_Walk")
+envs=("_T_WalkOlaf")
 #restore=("./results/toddlerbot__T_Walk_ppo_PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0_20251120_195130/101068800")
 
 # 이 실험 스크립트는 리워드 함수를 제외하고, 환경적인 제약이 추가되었을 때의 성능을 평가하기 위한 실험입니다.
@@ -19,7 +19,7 @@ envs=("_T_Walk")
 
 config_overrides=(
     # 우리꺼 관측값은 그대로인거랑 관측값도 랜덤한거
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.7"
+    "PPOConfig.num_timesteps=300000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.7"
     # "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.5"
     # "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=True,TJXEnvConfig.threshold_ratio=0.3"
     # "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.use_derate=True,TJXEnvConfig.use_group_rand=False,TJXEnvConfig.threshold_ratio=0.7"
