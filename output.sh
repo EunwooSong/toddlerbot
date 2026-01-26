@@ -21,10 +21,10 @@ for policy_dir in results/*; do
             echo "  - Copied best_policy"
         fi
 
-        # (2) 511488000/policy 파일 처리
-        if [ -f "$policy_dir/511488000/policy" ]; then
-            cp "$policy_dir/511488000/policy" "${OUTPUT_DIR}/${policy_name}_511488000_policy"
-            echo "  - Copied 511488000_policy"
+        # (2) 306892800/policy 파일 처리
+        if [ -f "$policy_dir/306892800/policy" ]; then
+            cp "$policy_dir/306892800/policy" "${OUTPUT_DIR}/${policy_name}_306892800_policy"
+            echo "  - Copied 306892800"
         fi
     fi
 done
