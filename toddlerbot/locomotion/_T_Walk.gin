@@ -26,7 +26,6 @@ RewardScales.stand_still = 1.0
 RewardScales.align_ground = 1.0
 RewardScales.energy = 0.05
 
-HeatRewardScales.safety_penalty = -10.0
-
+TJXEnvConfig.threshold_ratio=0.7
 TJXEnvConfig.use_group_rand=True
 TJXEnvConfig.use_derate=True
