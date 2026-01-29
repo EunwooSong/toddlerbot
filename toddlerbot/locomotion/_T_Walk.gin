@@ -30,3 +30,7 @@ TJXEnvConfig.threshold_ratio=0.3
 TJXEnvConfig.use_group_rand=False
 TJXEnvConfig.use_derate=True
 HeatRewardScales.safety_penalty=-0.2
+
+PPOConfig.num_timesteps=500000000
+PPOConfig.num_evals=1000
+PPOConfig.seed=0

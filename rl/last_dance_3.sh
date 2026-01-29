@@ -33,14 +33,16 @@ envs=("_T_Walk")
 config_overrides=(
     # 우리꺼 관측값은 그대로인거랑 관측값도 랜덤한거
     #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.3,HeatRewardScales.safety_penalty=0.0"
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.3"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0"
+    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.3"
+    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0"
     #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.5"
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.7"
+    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.7"
     #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.9"
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.threshold_ratio=0.3"
-    "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0,TJXEnvConfig.use_hard_const=True,TJXEnvConfig.torque=0.3"
-    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0,TJXEnvConfig.use_hard_const=True,TJXEnvConfig.torque=0.7"
+    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.threshold_ratio=0.3"
+    #"PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=10,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0,TJXEnvConfig.use_hard_const=True,TJXEnvConfig.torque=0.3"
+    "TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0,TJXEnvConfig.use_hard_const=True,TJXEnvConfig.torque=0.3"
+    #"TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0,TJXEnvConfig.use_hard_const=True,TJXEnvConfig.torque=0.7"
+    "TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.use_derate=False,HeatRewardScales.safety_penalty=0.0,TJXEnvConfig.use_hard_const=True,TJXEnvConfig.torque=0.9"
 )
 
 
@@ -63,4 +65,4 @@ done
 # 올라프 나중에 학습해야함
 echo "Olaf Study !!!!"
 #python toddlerbot/locomotion/train_mtjx.py --robot "toddlerbot" --env "_T_WalkOlaf" --config-override "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False" --gpu "0" #--restore "$restore"
-python toddlerbot/locomotion/train_mtjx.py --robot "toddlerbot" --env "_T_WalkOlaf" --config-override "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.3" --gpu "0" #--restore "$restore"
+#python toddlerbot/locomotion/train_mtjx.py --robot "toddlerbot" --env "_T_WalkOlaf" --config-override "PPOConfig.num_timesteps=500000000,PPOConfig.num_evals=1000,PPOConfig.seed=0,TJXEnvConfig.use_basic_obs=False,TJXEnvConfig.threshold_ratio=0.3" --gpu "0" #--restore "$restore"
