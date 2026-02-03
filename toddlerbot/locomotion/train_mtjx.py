@@ -897,7 +897,7 @@ def main(args=None):
     config_override_str: str = (
         "" if len(args.config_override) == 0 else f"_{args.config_override}"
     )
-    run_name = f"{robot.name}_{args.env}_ppo{config_override_str}_{time_str}"
+    run_name = f"{robot.name}_{args.env}_ppo{config_override_str}_{gin_file_list[1]}_{time_str}"
 
     if len(args.eval) > 0:
         if os.path.exists(os.path.join("results", run_name)):
