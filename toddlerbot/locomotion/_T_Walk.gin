@@ -1,3 +1,4 @@
+# 학습 전체 동일하게 적용할 것!
 CommandsConfig.command_range = [
     [-1.0, 1.0],
     [-1.0, 1.0],
@@ -26,11 +27,22 @@ RewardScales.stand_still = 1.0
 RewardScales.align_ground = 1.0
 RewardScales.energy = 0.05
 
-TJXEnvConfig.threshold_ratio=0.3
-TJXEnvConfig.use_group_rand=False
-TJXEnvConfig.use_derate=True
-HeatRewardScales.safety_penalty=-0.2
-
+# PPO 설정
 PPOConfig.num_timesteps=500000000
 PPOConfig.num_evals=1000
 PPOConfig.seed=0
+
+# 기본적으로 커리큘럼 적용 안함, 적용은 위해선 use_ep_sampling=True와 threshold_ratio을 1.0 미만으로 설정하면 됨 
+ColdToHotCurriculumConfig.threshold_ratio = 1.0
+ColdToHotCurriculumConfig.init_cold = [15.0, 30.0]
+ColdToHotCurriculumConfig.init_hot = [15.0, 55.0]
+ColdToHotCurriculumConfig.offset = [0.0, 15.0]
+ColdToHotCurriculumConfig.use_ep_sampling = False  # 초기 온도도 한번 reset된 정보로 들어감!
+
+# Eval 설정
+# 평가용 설정은, 2저항 열모델에서 테스트, 토크 저하게 적용됨, 에피소드마다 랜덤한 샘플링
+# mode에서 하드 클리핑 안쓰니까 상관 없음
+EvalConfig.threshold_ratio = 0.0
+EvalConfig.use_ep_sampling = True
+EvalConfig.temp_range = [20.0, 45.0]
+EvalConfig.offset = [0.0, 15.0]

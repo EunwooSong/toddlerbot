@@ -22,8 +22,8 @@ dependencies = [
     "diffusers==0.30.3",
     "gdown",
     "gin-config",
-    "jax==0.6.2",
-    "jaxlib==0.6.2",
+    "jax",
+    "jaxlib",
     "joblib",
     "line_profiler",
     "lz4",
@@ -65,7 +65,7 @@ dependencies = [
 [project.optional-dependencies]
 docs = ["sphinx", "sphinx-tabs", "sphinx-design", "sphinx-autobuild", "furo"]
 test = ["torch==2.3.1", "torchvision==0.18.1"]
-linux = ["jax[cuda12]==0.6.2", "pynput", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"]
+linux = ["jax", "pynput", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"]
 macos = ["torch==2.3.1", "torchvision==0.18.1"]
 windows = ["torch==2.3.1", "torchvision==0.18.1"]
 jetson = ["Jetson.GPIO", "pyaudio", "pydub"]

@@ -5,8 +5,6 @@ from typing import Dict, Optional
 import numpy as np
 import numpy.typing as npt
 
-from heat2torque.envs.base import HeatState
-
 @dataclass
 class Obs:
     """Observation data structure"""
@@ -59,7 +57,7 @@ class BaseSim(ABC):
 
     # 추상화 method 추가
     @abstractmethod
-    def get_motor_temp(self) -> HeatState:
+    def get_motor_temp(self) -> list:
         pass
 
     @abstractmethod

@@ -39,8 +39,11 @@ from toddlerbot.utils.file_utils import find_robot_file_path
 from toddlerbot.utils.misc_utils import dataclass2dict, parse_value
 
 # CUSTOM ENV
-from heat2torque.envs.walk_env import WalkThermalEnv
-from heat2torque.envs.config import MTJXConfig
+from heat2torque.config import ThermalConfig
+from heat2torque.agent import TMJXConfig
+
+# CUSTOM ENV Wrapper
+from heat2torque.envs.wrapper import ThermalCurriculumWrapper
 
 # Add matplot
 import matplotlib.pyplot as plt # 1. Matplotlib 임포트
@@ -69,7 +72,7 @@ def dynamic_import_envs(env_package: str):
 dynamic_import_envs("toddlerbot.locomotion")
 
 # import heat2torque envs
-dynamic_import_envs("heat2torque.envs")
+dynamic_import_envs("heat2torque.agent")
 
 def render_video(
     env: MJXEnv,
@@ -188,7 +191,7 @@ def log_metrics(
     t_h_min = metrics.get("eval/temp_housing_min") or metrics.get("temp_housing_min")
     t_progress = metrics.get("eval/temp_progress") or metrics.get("temp_progress")
     t_current_step = metrics.get("eval/temp_current_step") or metrics.get("temp_current_step")
-    t_torque_derate= metrics.get("eval/temp_torque_derate") or metrics.get("temp_torque_derate")
+    t_torque_derate= metrics.get("eval/temp_torque_derate(MSE)") or metrics.get("temp_torque_derate(MSE)")
     t_olaf= metrics.get("eval/temp_olaf_reward") or metrics.get("temp_olaf_reward")
 
     if t_c_avg is not None:
@@ -446,6 +449,26 @@ def train(
         run_name (str): Name of the training run, used for organizing results.
         restore_path (str): Path to restore a previous checkpoint, if any.
     """
+    # wrapper 감싸기
+    env = ThermalCurriculumWrapper(env, train_cfg.num_timesteps, train_cfg.num_envs, TMJXConfig())
+
+    # 사용자 정의 cfg. 이 환경은 모든 정책 학습시 동일하게 적용됨!!
+    e = ThermalConfig.EvalConfig()
+    eval_cfg = TMJXConfig()
+    eval_cfg.thermal_cfg.curriculum.threshold_ratio = 0.0
+    eval_cfg.thermal_cfg.curriculum.init_hot = e.temp_range
+    eval_cfg.thermal_cfg.curriculum.init_cold = e.temp_range
+    eval_cfg.thermal_cfg.curriculum.use_ep_sampling = e.use_ep_sampling
+    eval_cfg.thermal_cfg.curriculum.offset = e.offset
+    
+    eval_cfg.thermal_cfg.domain_rand.temp_range = e.temp_range
+    eval_cfg.thermal_cfg.env.mode = e.mode
+    eval_cfg.thermal_cfg.env.use_w_offset = e.use_w_offset
+    eval_cfg.thermal_cfg.env.use_rand_w = e.use_rand_w
+    eval_cfg.thermal_cfg.env.offset = e.offset
+
+    eval_env = ThermalCurriculumWrapper(eval_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
+
     exp_folder_path = os.path.join("results", run_name)
     os.makedirs(exp_folder_path, exist_ok=True)
 
@@ -633,6 +656,10 @@ def evaluate(
     rng = jax.random.PRNGKey(0)
     state = jit_reset(rng)
 
+    # 초기 온도 설정
+    # 우리가 정한 에피소드
+    # 
+
     times = [time.time()]
     rollout: List[Any] = [state.pipeline_state]
     for i in tqdm(range(num_steps), desc="Evaluating"):
@@ -794,7 +821,7 @@ def main(args=None):
         env = EnvClass(
             args.env,
             robot,
-            MTJXConfig(env_cfg),  # type: ignore
+            TMJXConfig(env_cfg),  # type: ignore
             fixed_base="fixed" in args.env,
             add_noise=env_cfg.noise.add_noise,
             add_domain_rand=env_cfg.domain_rand.add_domain_rand,
@@ -803,7 +830,7 @@ def main(args=None):
         eval_env = EnvClass(
             args.env,
             robot,
-            MTJXConfig(env_cfg),  # type: ignore
+            TMJXConfig(env_cfg),  # type: ignore
             fixed_base="fixed" in args.env,
             add_noise=env_cfg.noise.add_noise,
             add_domain_rand=env_cfg.domain_rand.add_domain_rand,
@@ -812,7 +839,7 @@ def main(args=None):
         test_env = EnvClass(
             args.env,
             robot,
-            MTJXConfig(env_cfg),  # type: ignore
+            TMJXConfig(env_cfg),  # type: ignore
             fixed_base="fixed" in args.env,
             add_noise=False,
             add_domain_rand=False,
