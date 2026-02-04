@@ -130,28 +130,17 @@ def log_metrics(
     width: int = 80,
     pad: int = 35,
 ):
-    """Logs and formats metrics for display, including elapsed time and optional step information.
-
-    Args:
-        metrics (Dict[str, Any]): A dictionary containing metric names and their corresponding values.
-        time_elapsed (float): The time elapsed since the start of the process.
-        num_steps (int, optional): The current number of steps completed. Defaults to -1.
-        num_total_steps (int, optional): The total number of steps to be completed. Defaults to -1.
-        width (int, optional): The width of the log display. Defaults to 80.
-        pad (int, optional): The padding for metric names in the log display. Defaults to 35.
-
-    Returns:
-        Dict[str, Any]: A dictionary containing the logged data, including time elapsed and processed metrics.
-    """
     log_data: Dict[str, Any] = {"time_elapsed": time_elapsed}
     log_string = f"""{"#" * width}\n"""
+    
     if num_steps >= 0 and num_total_steps > 0:
         log_data["num_steps"] = num_steps
         title = f" \033[1m Learning steps {num_steps}/{num_total_steps} \033[0m "
         log_string += f"""{title.center(width, " ")}\n"""
 
+    # --- 1. 일반 메트릭 처리 (상단 리스트) ---
     for key, value in metrics.items():
-        if "std" in key:
+        if "std" in key or "temp_" in key:  # 온도 지표는 상단 루프에서 제외
             continue
 
         words = key.split("/")
@@ -164,66 +153,54 @@ def log_metrics(
             metric_name = "_".join(words)
 
         log_data[metric_name] = value
-        if (
-            "episode_reward" not in metric_name
-            and "avg_episode_length" not in metric_name
-            and "temp_" not in metric_name
-        ):
+        if "episode_reward" not in metric_name and "avg_episode_length" not in metric_name:
             log_string += f"""{f"{metric_name}:":>{pad}} {value:.4f}\n"""
 
-    log_string += (
-        f"""{"-" * width}\n""" f"""{"Time elapsed:":>{pad}} {time_elapsed:.1f}\n"""
-    )
+    log_string += f"""{"-" * width}\n"""
+    log_string += f"""{"Time elapsed:":>{pad}} {time_elapsed:.1f}\n"""
+    
     if "eval/episode_reward" in metrics:
-        log_string += (
-            f"""{"Mean reward:":>{pad}} {metrics["eval/episode_reward"]:.3f}\n"""
-        )
-    if "eval/avg_episode_length" in metrics:
-        log_string += f"""{"Mean episode length:":>{pad}} {metrics["eval/avg_episode_length"]:.3f}\n"""
+        log_string += f"""{"Mean reward:":>{pad}} {metrics["eval/episode_reward"]:.3f}\n"""
+    
+    # --- 2. 온도 지표 복원 및 요약 출력 (하단 섹션) ---
+    # Brax Evaluator가 (마지막값/에피소드길이)로 보낸 값을 다시 복원합니다.
+    avg_len = metrics.get("eval/avg_episode_length", 1.0)
+    
+    def get_final_temp(key):
+        # 실제 확인된 키 경로인 eval/episode/를 접두사로 사용합니다.
+        full_key = f"eval/episode_{key}"
+        val = metrics.get(full_key)
+        
+        if val is None:
+            return None
+        return val #/ avg_len # 에피소드 종료 시점의 실제 물리값 복원
 
-    # --- 온도 지표 요약 출력 (추가된 부분) ---
-    # eval/ 경로가 붙어있을 경우와 아닌 경우 모두 대응
-    t_c_avg = metrics.get("eval/temp_core_avg") or metrics.get("temp_core_avg")
-    t_c_max = metrics.get("eval/temp_core_max") or metrics.get("temp_core_max")
-    t_c_min = metrics.get("eval/temp_core_min") or metrics.get("temp_core_min")
-    t_h_avg = metrics.get("eval/temp_housing_avg") or metrics.get("temp_housing_avg")
-    t_h_max = metrics.get("eval/temp_housing_max") or metrics.get("temp_housing_max")
-    t_h_min = metrics.get("eval/temp_housing_min") or metrics.get("temp_housing_min")
-    t_progress = metrics.get("eval/temp_progress") or metrics.get("temp_progress")
-    t_current_step = metrics.get("eval/temp_current_step") or metrics.get("temp_current_step")
-    t_torque_derate= metrics.get("eval/temp_torque_derate(MSE)") or metrics.get("temp_torque_derate(MSE)")
-    t_olaf= metrics.get("eval/temp_olaf_reward") or metrics.get("temp_olaf_reward")
+    # 출력할 지표 정의 (이름, 키값, 포맷)
+    temp_metrics = [
+        ("Core Temp (Avg/Max)", "temp_core_avg", "temp_core_max", ".2f"),
+        ("Housing Temp (Avg/Max)", "temp_housing_avg", "temp_housing_max", ".2f"),
+        ("Temp Progress", "temp_progress", None, ".4f"),
+        ("Torque Derate(MSE)", "temp_torque_derate(MSE)", None, ".4f"),
+    ]
 
-    if t_c_avg is not None:
-        log_string += f"""{"Core Temp (Avg):":>{pad}} {t_c_avg:.2f}\n"""
-    if t_c_max is not None:
-        log_string += f"""{"Core Temp (Max):":>{pad}} {t_c_max:.2f}\n"""
-    if t_c_min is not None:
-        log_string += f"""{"Core Temp (Min):":>{pad}} {t_c_min:.2f}\n"""
-    if t_h_avg is not None:
-        log_string += f"""{"Housing Temp (Avg):":>{pad}} {t_h_avg:.2f}\n"""
-    if t_h_max is not None:
-        log_string += f"""{"Housing Temp (Max):":>{pad}} {t_h_max:.2f}\n"""
-    if t_h_min is not None:
-        log_string += f"""{"Housing Temp (Min):":>{pad}} {t_h_min:.2f}\n"""
-    if t_progress is not None:
-        log_string += f"""{"Temp Progress(Curriculum):":>{pad}} {t_progress:.4f}\n"""
-    if t_current_step is not None:
-        log_string += f"""{"Temp Current Step(Curriculum):":>{pad}} {t_current_step:.4f}\n"""
-    if t_torque_derate is not None:
-        log_string += f"""{"Temp Torque Derate(Debugging):":>{pad}} {t_torque_derate:.4f}\n"""
-    if t_olaf is not None:
-        log_string += f"""{"Olaf Reward(Debugging):":>{pad}} {t_olaf:.4f}\n"""
-    # ---------------------------------------
+    log_string += f"""{"[ Thermal Status (Final Step) ]".center(width)}\n"""
+    
+    for label, avg_k, max_k, fmt in temp_metrics:
+        v_avg = get_final_temp(avg_k)
+        if v_avg is not None:
+            if max_k: # Avg와 Max를 한 줄에 표시하여 가독성 높임
+                v_max = get_final_temp(max_k)
+                log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}} / {v_max:{fmt}}\n"""
+            else:
+                log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}}\n"""
 
+    # --- 3. 성능 지표 마무리 ---
     if num_steps > 0 and num_total_steps > 0:
-        log_string += (
-            f"""{"Computation:":>{pad}} {(num_steps / time_elapsed):.1f} steps/s\n"""
-            f"""{"ETA:":>{pad}} {(time_elapsed / num_steps) * (num_total_steps - num_steps):.1f}s\n"""
-        )
+        log_string += f"""{"-" * width}\n"""
+        log_string += f"""{"Computation:":>{pad}} {(num_steps / time_elapsed):.1f} steps/s\n"""
+        log_string += f"""{"ETA:":>{pad}} {(time_elapsed / num_steps) * (num_total_steps - num_steps):.1f}s\n"""
 
     print(log_string)
-
     return log_data
 
 
@@ -455,7 +432,7 @@ def train(
     # 사용자 정의 cfg. 이 환경은 모든 정책 학습시 동일하게 적용됨!!
     e = ThermalConfig.EvalConfig()
     eval_cfg = TMJXConfig()
-    eval_cfg.thermal_cfg.curriculum.threshold_ratio = 0.0
+    eval_cfg.thermal_cfg.curriculum.threshold_ratio = 1.0
     eval_cfg.thermal_cfg.curriculum.init_hot = e.temp_range
     eval_cfg.thermal_cfg.curriculum.init_cold = e.temp_range
     eval_cfg.thermal_cfg.curriculum.use_ep_sampling = e.use_ep_sampling
@@ -466,6 +443,7 @@ def train(
     eval_cfg.thermal_cfg.env.use_w_offset = e.use_w_offset
     eval_cfg.thermal_cfg.env.use_rand_w = e.use_rand_w
     eval_cfg.thermal_cfg.env.offset = e.offset
+    eval_cfg.thermal_cfg.reward.safety_penalty = e.safety_penalty
 
     eval_env = ThermalCurriculumWrapper(eval_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
 

@@ -44,5 +44,6 @@ ColdToHotCurriculumConfig.use_ep_sampling = True  # 초기 온도도 한번 rese
 # mode에서 하드 클리핑 안쓰니까 상관 없음
 EvalConfig.threshold_ratio = 0.0
 EvalConfig.use_ep_sampling = True
+EvalConfig.safety_penalty = 0.2
 EvalConfig.temp_range = [20.0, 45.0]
 EvalConfig.offset = [0.0, 15.0]
