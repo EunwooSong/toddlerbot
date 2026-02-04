@@ -17,7 +17,7 @@ gin_files=(
     #"ablation/model_a_f"
     #"ablation/model_g"
     #"ablation/model_b"
-    #"ablation/model_l"
+    #"ablation/model_i"
     #"ablation/model_j"
     #"ablation/model_k"
     #"ablation/model_n"
