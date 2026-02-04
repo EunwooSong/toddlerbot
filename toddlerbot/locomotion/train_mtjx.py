@@ -805,10 +805,26 @@ def main(args=None):
             add_domain_rand=env_cfg.domain_rand.add_domain_rand,
             **kwargs,  # type: ignore
         )
+
+        e = ThermalConfig.EvalConfig()
+        eval_cfg = TMJXConfig(env_cfg)
+        eval_cfg.thermal_cfg.curriculum.threshold_ratio = 1.0
+        eval_cfg.thermal_cfg.curriculum.init_hot = e.temp_range
+        eval_cfg.thermal_cfg.curriculum.init_cold = e.temp_range
+        eval_cfg.thermal_cfg.curriculum.use_ep_sampling = e.use_ep_sampling
+        eval_cfg.thermal_cfg.curriculum.offset = e.offset
+        
+        eval_cfg.thermal_cfg.domain_rand.temp_range = e.temp_range
+        eval_cfg.thermal_cfg.env.mode = e.mode
+        eval_cfg.thermal_cfg.env.use_w_offset = e.use_w_offset
+        eval_cfg.thermal_cfg.env.use_rand_w = e.use_rand_w
+        eval_cfg.thermal_cfg.env.offset = e.offset
+        eval_cfg.thermal_cfg.reward.safety_penalty = e.safety_penalty
+
         eval_env = EnvClass(
             args.env,
             robot,
-            TMJXConfig(env_cfg),  # type: ignore
+            eval_cfg,  # type: ignore
             fixed_base="fixed" in args.env,
             add_noise=env_cfg.noise.add_noise,
             add_domain_rand=env_cfg.domain_rand.add_domain_rand,
@@ -817,12 +833,15 @@ def main(args=None):
         test_env = EnvClass(
             args.env,
             robot,
-            TMJXConfig(env_cfg),  # type: ignore
+            eval_cfg,  # type: ignore
             fixed_base="fixed" in args.env,
             add_noise=False,
             add_domain_rand=False,
             **kwargs,
         )
+        # test_env에만 cl wrapper 적용
+        test_env = ThermalCurriculumWrapper(test_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
+
     else:
         env = EnvClass(
             args.env,
