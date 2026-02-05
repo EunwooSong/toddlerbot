@@ -2,6 +2,7 @@
 ThermalEnvConfig.model_order_2 = True
 ThermalEnvConfig.use_derate = False
 ThermalEnvConfig.use_thermal = True
+
 # 1저항 열 모델은 use_w_offset False로 할것
 ThermalEnvConfig.use_w_offset = True
 

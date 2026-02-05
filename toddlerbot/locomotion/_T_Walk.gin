@@ -35,7 +35,7 @@ PPOConfig.seed=0
 # 기본적으로 커리큘럼 적용 안함, 적용은 위해선 use_ep_sampling=True와 threshold_ratio을 1.0 미만으로 설정하면 됨 
 ColdToHotCurriculumConfig.threshold_ratio = 1.0
 ColdToHotCurriculumConfig.init_cold = [15.0, 30.0]
-ColdToHotCurriculumConfig.init_hot = [15.0, 55.0]
+ColdToHotCurriculumConfig.init_hot = [15.0, 50.0]
 ColdToHotCurriculumConfig.offset = [0.0, 15.0]
 ColdToHotCurriculumConfig.use_ep_sampling = True  # 초기 온도도 한번 reset된 정보로 들어감! -> 이건 안됨, 에피소드마다 업데이트 해줄 것!!!!
 
