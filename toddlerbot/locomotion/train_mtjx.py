@@ -163,33 +163,34 @@ def log_metrics(
         log_string += f"""{"Mean reward:":>{pad}} {metrics["eval/episode_reward"]:.3f}\n"""
     
     # --- 2. 온도 지표 복원 및 요약 출력 (하단 섹션) ---
-    # Brax Evaluator가 (마지막값/에피소드길이)로 보낸 값을 다시 복원합니다.
-    avg_len = metrics.get("eval/avg_episode_length", 1.0)
-    
-    def get_final_temp(key):
-        # 실제 확인된 키 경로인 eval/episode/를 접두사로 사용합니다.
+    # eval_metrics (jnp.where(done, T, 0.0)) 패턴은 eval unroll(250 step)에서
+    # eval_done(reset_steps=5000)이 발동하지 않아 넘어지지 않은 env는 0.0이 되어
+    # 평균값이 희석됨. 대신 매 step 기록되는 heat_metrics 키(housing_avg 등)를 사용:
+    #   eval/episode_housing_avg = sum(T over episode) → / avg_len = 에피소드 평균 온도
+    avg_len = max(metrics.get("eval/avg_episode_length", 1.0), 1.0)
+
+    def get_avg_temp(key):
+        """heat_metrics 키로 eval/episode 누적값을 에피소드 평균 온도로 변환."""
         full_key = f"eval/episode_{key}"
         val = metrics.get(full_key)
-        
         if val is None:
             return None
-        return val #/ avg_len # 에피소드 종료 시점의 실제 물리값 복원
+        return val / avg_len  # sum → 에피소드 평균
 
-    # 출력할 지표 정의 (이름, 키값, 포맷)
+    # 출력할 지표 정의 (이름, heat_metrics 키, 포맷)
     temp_metrics = [
-        ("Core Temp (Avg/Max)", "temp_core_avg", "temp_core_max", ".2f"),
-        ("Housing Temp (Avg/Max)", "temp_housing_avg", "temp_housing_max", ".2f"),
-        ("Temp Progress", "temp_progress", None, ".4f"),
-        ("Torque Derate(MSE)", "temp_torque_derate(MSE)", None, ".4f"),
+        ("Core Temp (Avg/Max)", "core_avg", "core_max", ".2f"),
+        ("Housing Temp (Avg/Max)", "housing_avg", "housing_max", ".2f"),
+        ("Torque Derate(MSE)", "torque_derate(MSE)", None, ".4f"),
     ]
 
-    log_string += f"""{"[ Thermal Status (Final Step) ]".center(width)}\n"""
-    
+    log_string += f"""{"[ Thermal Status (Ep. Average) ]".center(width)}\n"""
+
     for label, avg_k, max_k, fmt in temp_metrics:
-        v_avg = get_final_temp(avg_k)
+        v_avg = get_avg_temp(avg_k)
         if v_avg is not None:
-            if max_k: # Avg와 Max를 한 줄에 표시하여 가독성 높임
-                v_max = get_final_temp(max_k)
+            if max_k:
+                v_max = get_avg_temp(max_k)
                 log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}} / {v_max:{fmt}}\n"""
             else:
                 log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}}\n"""
