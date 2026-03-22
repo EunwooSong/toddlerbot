@@ -1,0 +1,7 @@
+=== Experiment Start: 20260322-211636 ===
+[21:16:36] Dispatching ablation/model_baseline to GPU 0 (Session: rl_20260322-211636_0_ablation_model_baseline)
+[21:16:38] Dispatching ablation/model_ours to GPU 1 (Session: rl_20260322-211636_1_ablation_model_ours)
+[21:16:40] Dispatching ablation/model_olaf to GPU 2 (Session: rl_20260322-211636_2_ablation_model_olaf)
+------------------------------------------------
+모든 작업이 tmux 세션으로 분산 실행되었습니다.
+로그 파일: experiment_log_20260322-211636.txt
