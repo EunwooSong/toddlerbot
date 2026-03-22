@@ -1,6 +1,7 @@
 import os
 
 os.environ["USE_JAX"] = "true"
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '.25'
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=true"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
