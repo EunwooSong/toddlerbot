@@ -5,8 +5,8 @@ OUTPUT_DIR="output_policy"
 mkdir -p "$OUTPUT_DIR"
 
 # 2. results 폴더 내의 각 정책 폴더를 순회
-# results/* 로 정책 폴더 리스트를 가져옵니다.
-for policy_dir in results/*; do
+# results/toddlerbot__T_Walk_ppo_ablation/* 로 정책 폴더 리스트를 가져옵니다.
+for policy_dir in results/toddlerbot__T_Walk_ppo_ablation/*; do
     
     # 디렉토리인지 확인
     if [ -d "$policy_dir" ]; then

@@ -10,6 +10,7 @@ gin_files=(
     "ablation/model_baseline"
     "ablation/model_ours"
     "ablation/model_olaf"
+    "ablation/model_ours_with_cl"
 )
 
 # GPU 설정 (0~3번 사용)
