@@ -22,7 +22,7 @@ for robot in "${robots[@]}"; do
             
             # Run the Python script with the current configuration
             # 일단 테스트용!
-            python toddlerbot/locomotion/train_mtjx.py --robot "$robot" --env "$env" --gpu "3" --gin-files "$gin_file"
+            python toddlerbot/locomotion/train_mtjx.py --robot "$robot" --env "$env" --gpu "0" --gin-files "$gin_file"
             
             # Optional: Add a small delay between experiments
             sleep 1
