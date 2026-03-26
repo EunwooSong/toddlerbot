@@ -184,3 +184,4 @@ toddlerbot/policies/checkpoints/teleop_model*
 # Experiment logs
 experiment_log_*.txt
 logs/
+output_policy/

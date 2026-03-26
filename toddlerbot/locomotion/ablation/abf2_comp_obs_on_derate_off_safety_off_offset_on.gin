@@ -1,0 +1,16 @@
+# Component Ablation: Thermal Obs OFF, Derating OFF
+# 온도 관측 없음 + sim derating 없음 → 열적 영향 완전 제거
+# 비교: 열 정보가 전혀 없을 때 (사실상 baseline과 동일한 학습 환경)
+# + baseline으로 비교해야함.
+
+ThermalEnvConfig.model_order_2 = True  
+ThermalEnvConfig.use_derate = False     # OFF
+ThermalEnvConfig.use_thermal = True    # ON
+ThermalEnvConfig.use_w_offset = True
+
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_num = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]   # ON
+
+ThermalRewardScales.safety_penalty = 0.0  # OFF
+ThermalRewardScales.cbf_penalty = 0.0
+

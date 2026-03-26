@@ -1,0 +1,19 @@
+# Ablation Study: Step 3 - OLAF + Full Obs (No Curriculum)
+# OLAF 대비: 관측값이 단일 모터 → 전체 모터(30)로 확장
+# CBF 패널티 유지, safety_penalty 없음, 커리큘럼 없음
+
+# 학습 환경
+ThermalEnvConfig.model_order_2 = False
+ThermalEnvConfig.use_derate = False
+ThermalEnvConfig.use_thermal = True
+ThermalEnvConfig.use_w_offset = False
+
+# 관측 값 설정
+ThermalObsConfig.obs_h_clip_range = [65.0, 85.0]
+ThermalObsConfig.obs_num = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+
+# 리워드 설정
+ThermalRewardScales.safety_penalty = 0.0
+ThermalRewardScales.cbf_penalty = 0.2
+
+# Safety Wrapper: 전체 모터, 기본 패널티

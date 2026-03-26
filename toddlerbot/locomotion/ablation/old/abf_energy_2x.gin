@@ -1,0 +1,17 @@
+# Energy Penalty Ablation: 2x (열 모델 없음)
+# energy = 0.10 (기본값의 2배)
+
+ThermalEnvConfig.model_order_2 = False
+ThermalEnvConfig.use_derate = False
+ThermalEnvConfig.use_thermal = False
+ThermalEnvConfig.use_w_offset = False
+
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_num = []
+
+ThermalRewardScales.safety_penalty = 0.0
+ThermalRewardScales.cbf_penalty = 0.0
+
+RewardScales.energy = 0.10   # 2x
+
+# Safety Wrapper: 전체 모터, 기본 패널티

@@ -46,6 +46,10 @@ gin_files=(
     "ablation/energy_2x"                # energy = 0.10 (2x)
     "ablation/energy_5x"                # energy = 0.25 (5x)
     "ablation/energy_10x"               # energy = 0.50 (10x)
+    "ablation/cl_hot_min25"   # init_hot = [25, 65]
+    "ablation/cl_hot_min30"   # init_hot = [30, 65]
+    "ablation/cl_hot_min35"   # init_hot = [35, 65]
+    "ablation/cl_hot_min40"   # init_hot = [40, 65]
 )
 
 # 4 GPU × 2 슬롯 = 8 동시 실행, 나머지는 대기 후 순차 실행

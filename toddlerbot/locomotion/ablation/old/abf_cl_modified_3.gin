@@ -1,0 +1,19 @@
+# Ablation Study: Step 4 - Full TA-FTC (Ours)
+# OLAF+CL 대비: +전체 모터 관측(30), +w_offset, safety_penalty(CBF→safety)
+# 최종 제안 모델
+
+# 학습 환경
+ThermalEnvConfig.model_order_2 = True
+ThermalEnvConfig.use_derate = True
+ThermalEnvConfig.use_thermal = True
+ThermalEnvConfig.use_w_offset = True
+
+# 관측 값 설정
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_num = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+
+# 리워드 설정
+ThermalRewardScales.safety_penalty = 0.2
+ThermalRewardScales.cbf_penalty = 0.0
+
+# Safety Wrapper: 전체 모터, 기본 패널티

@@ -1,0 +1,21 @@
+# Ablation Study: Step 2 - OLAF Model (Thermal + Single Obs + CBF)
+# Baseline 대비: +열 모델, +단일 모터 관측, +CBF 패널티
+# 커리큘럼 없음, w_offset 없음
+
+# 학습 환경(열모델 뭘 쓸건지, derating 할건지 말건지)
+ThermalEnvConfig.model_order_2 = False
+ThermalEnvConfig.use_derate = False
+ThermalEnvConfig.use_thermal = True
+
+# 1저항 열 모델은 use_w_offset False로 할것
+ThermalEnvConfig.use_w_offset = False
+
+# 관측 값 설정
+ThermalObsConfig.obs_h_clip_range = [65.0, 85.0]
+ThermalObsConfig.obs_num = [0]
+
+# 리워드 설정
+ThermalRewardScales.safety_penalty = 0.0
+ThermalRewardScales.cbf_penalty = 0.2
+
+# Safety Wrapper: 전체 모터, 기본 패널티

@@ -59,13 +59,13 @@ dependencies = [
     "textual",
     "tqdm",
     "wandb",
-    "zmq"
+    #"zmq"
 ]
 
 [project.optional-dependencies]
 docs = ["sphinx", "sphinx-tabs", "sphinx-design", "sphinx-autobuild", "furo"]
 test = ["torch==2.3.1", "torchvision==0.18.1"]
-linux = ["jax", "pynput", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"]
+linux = ["jax", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"] #"pynput",
 macos = ["torch==2.3.1", "torchvision==0.18.1"]
 windows = ["torch==2.3.1", "torchvision==0.18.1"]
 jetson = ["Jetson.GPIO", "pyaudio", "pydub"]
