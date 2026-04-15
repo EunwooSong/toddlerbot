@@ -21,7 +21,11 @@ from toddlerbot.utils.math_utils import interpolate_action
 # from toddlerbot.utils.misc_utils import profile
 
 import traceback
-from heat2torque.envs.config import MTJXConfig
+
+#from heat2torque.envs.config import MTJXConfig
+from heat2torque import ThermalConfig
+from heat2torque.agent import TMJXConfig
+from heat2torque.obs import RealThermalObs
 
 class MTJXPolicy(BasePolicy, policy_name="mtjx"):
     """Policy for controlling the robot using the MJX model with Thermal Observations."""
@@ -42,8 +46,11 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
         assert cfg is not None, "cfg is required in the subclass!"
 
         self.ckpt = ckpt
-        self.cfg = cfg
+        self.cfg = TMJXConfig(cfg)
         self.motion_ref = motion_ref
+        # self.olaf = self.cfg.tjx_cfg.olaf
+        # if self.olaf:
+        #     self.cfg.tjx_cfg.obs_clip = [65.0, 80.0]
 
         self.command_obs_indices = cfg.commands.command_obs_indices
         self.commmand_range = np.array(cfg.commands.command_range, dtype=np.float32)
@@ -54,27 +61,27 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
         else:
             self.fixed_command = fixed_command
 
-        # --- Custom Obs Config Setup ---
-        self.use_base_obs = cfg.tjx_cfg.use_basic_obs
-        self.housing_obs_scale = cfg.obs_scales.st_housing 
+        # # --- Custom Obs Config Setup ---
+        # self.use_base_obs = cfg.tjx_cfg.use_basic_obs
+        # self.housing_obs_scale = cfg.obs_scales.st_housing 
         
-        # 1. Determine single observation size
+        # # 1. Determine single observation size
         self.num_single_obs = cfg.obs.num_single_obs
         
-        # mtjx_env.py의 _init_env 로직과 동기화:
-        # use_basic_obs가 False일 경우, actuator 개수만큼 obs size 증가
-        if not self.use_base_obs:
-             # robot.motor_ordering의 길이와 actuator_indices의 길이는 같다고 가정
-            self.num_single_obs += len(robot.motor_ordering)
+        # # mtjx_env.py의 _init_env 로직과 동기화:
+        # # use_basic_obs가 False일 경우, actuator 개수만큼 obs size 증가
+        # if not self.use_base_obs:
+        #      # robot.motor_ordering의 길이와 actuator_indices의 길이는 같다고 가정
+        #     self.num_single_obs += len(robot.motor_ordering)
 
-        # 2. Calculate total history size with the updated single obs size
+        # # 2. Calculate total history size with the updated single obs size
         self.obs_history_size = cfg.obs.frame_stack * self.num_single_obs
         self.obs_history = np.zeros(self.obs_history_size, dtype=np.float32)
 
-        # 관측값
-        print(self.obs_history_size, self.num_single_obs)
+        # # 관측값
+        # print(self.obs_history_size, self.num_single_obs)
 
-        # -------------------------------
+        # # -------------------------------
 
         self.obs_scales = cfg.obs_scales
         self.default_motor_pos = np.array(
@@ -118,16 +125,6 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
         self.jit_inference_fn = None
         self.rng = None
 
-        self.warmup_result: Dict[str, Any] = {}
-        self.warmup_event = threading.Event()
-
-        self.warmup_thread = threading.Thread(
-            target=self.warmup,
-            args=(self.warmup_result, self.warmup_event),
-            daemon=True,
-        )
-        self.warmup_thread.start()
-
         self.joystick = joystick
         if joystick is None:
             try:
@@ -138,7 +135,26 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
         self.control_inputs: Dict[str, float] = {}
         self.is_prepared = False
 
+        # RealThermalObs에 대한 처리 ---
+        config = ThermalConfig()
+        self.thermal_obs = RealThermalObs(config, total_num_actuators=len(self.robot.motor_ordering))
+
+        init_thermal_history = self.thermal_obs.reset()
+        self.obs_history_size += len(init_thermal_history)
+        # ---
+
         self.reset()
+
+    def warmup_late(self):
+        self.warmup_result: Dict[str, Any] = {}
+        self.warmup_event = threading.Event()
+
+        self.warmup_thread = threading.Thread(
+            target=self.warmup,
+            args=(self.warmup_result, self.warmup_event),
+            daemon=True,
+        )
+        self.warmup_thread.start()
 
     def warmup(self, result_container, event):
         try:
@@ -177,13 +193,24 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
             print(f"Loading policy from {policy_path}")
 
             params = model.load_params(policy_path)
-            inference_fn = make_policy(params, deterministic=True)
+
+            # param이 dict인 경우: values만 list로 변환 후 마지막 요소 제거
+            if isinstance(params, dict):
+                params = list(params.values())
+            # param이 list인 경우: 마지막 요소 제거
+            elif isinstance(params, list):
+                params = params[:-1]
+
+            inference_fn = make_policy(params[:-1], deterministic=True)
             jit_inference_fn = jax.jit(inference_fn)
             rng = jax.random.PRNGKey(0)
             jit_inference_fn(self.obs_history, rng)[0].block_until_ready()
 
             result_container["jit_inference_fn"] = jit_inference_fn
             result_container["rng"] = rng
+
+            init_thermal_history = self.thermal_obs.reset()
+            print(f"thermal_obs: {len(init_thermal_history)}, total obs history: {len(self.obs_history)}")
         finally:
             event.set()
 
@@ -258,7 +285,9 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
             motor_pos_delta = motor_pos_delta[:-2]
             motor_vel = motor_vel[:-2]
 
-        # 1. Base Observations
+        # -----------------------------------------------------------
+        # 1. Base Observations 구성 (단일 프레임)
+        # -----------------------------------------------------------
         obs_components = [
             self.phase_signal,
             command[self.command_obs_indices],
@@ -270,32 +299,89 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
             obs.ang_vel * self.obs_scales.ang_vel,
             obs.euler * self.obs_scales.euler,
         ]
+        base_obs_frame = np.concatenate(obs_components)
 
-        # 2. Add Thermal Observations if configured
-        if not self.use_base_obs:
-            # NOTE: 'obs' 객체에 'motor_temp' 속성이 존재한다고 가정합니다.
-            # (Robot Interface나 Sim Wrapper에서 이 값을 채워주어야 합니다)
-            if hasattr(obs, 'motor_temp'):
-                st_t_housing = obs.motor_temp
-            else:
-                # 데이터가 없는 경우 0으로 초기화하거나 경고 발생 (여기선 0으로 처리)
-                # 실제 배포시에는 반드시 센서값을 연결해야 합니다.
-                st_t_housing = np.zeros(self.num_action, dtype=np.float32)
-
-            # mtjx_env.py의 전처리 로직 복제: 
-            # "st_t_housing = jnp.round(st_t_housing).astype(jnp.int32)"
-            # Python/Numpy 환경에서 동일하게 동작하도록 구현
-            st_t_housing_rounded = np.round(st_t_housing).astype(np.float32)
+        # -----------------------------------------------------------
+        # 2. Thermal Observations 처리 (전체 히스토리 스택)
+        # -----------------------------------------------------------
+        # ThermalObs 객체가 초기화되어 있는지 확인
+        if hasattr(self, 'thermal_obs'):
+            # Obs에 motor_temp가 없으면 0으로 대체 (안전장치)
+            current_temp = getattr(obs, 'motor_temp', np.zeros(self.num_action, dtype=np.float32))
             
-            # 스케일링 적용 및 추가
-            obs_components.append(st_t_housing_rounded * self.housing_obs_scale)
+            # RealThermalObs.step은 업데이트된 '전체 히스토리'를 반환함
+            thermal_history_stack = self.thermal_obs.step(current_temp)
+            len_thermal = thermal_history_stack.shape[0]
+        else:
+            thermal_history_stack = np.array([], dtype=np.float32)
+            len_thermal = 0
 
-        # Concatenate all components
-        obs_arr = np.concatenate(obs_components)
+        # -----------------------------------------------------------
+        # 3. History 분리 및 업데이트 (Split -> Update -> Merge)
+        # -----------------------------------------------------------
+        # 현재 self.obs_history는 [Base_History | Thermal_History]로 구성됨
+        # Thermal 길이만큼 뒤에서 잘라내어 Base 부분만 추출
+        total_hist_len = self.obs_history.shape[0]
+        len_base = total_hist_len - len_thermal
+        base_hist = self.obs_history[:len_base]
+        
+        # [Base History 업데이트]
+        # 기존 로직 유지: np.roll 후 앞부분에 최신 프레임 삽입
+        base_hist = np.roll(base_hist, base_obs_frame.size)
+        base_hist[:base_obs_frame.size] = base_obs_frame
 
-        self.obs_history = np.roll(self.obs_history, obs_arr.size)
-        self.obs_history[: obs_arr.size] = obs_arr
+        # [최종 결합]
+        # 업데이트된 Base History + 새로 받은 Thermal History Stack
+        if len_thermal > 0:
+            self.obs_history = np.concatenate([base_hist, thermal_history_stack])
+        else:
+            self.obs_history = base_hist
 
+        # # 2. Add Thermal Observations if configured
+        # if not self.use_base_obs:
+        #     # NOTE: 'obs' 객체에 'motor_temp' 속성이 존재한다고 가정합니다.
+        #     # (Robot Interface나 Sim Wrapper에서 이 값을 채워주어야 합니다)
+        #     if hasattr(obs, 'motor_temp'):
+        #         st_t_housing = obs.motor_temp
+        #     else:
+        #         # 데이터가 없는 경우 0으로 초기화하거나 경고 발생 (여기선 0으로 처리)
+        #         # 실제 배포시에는 반드시 센서값을 연결해야 합니다.
+        #         st_t_housing = np.zeros(self.num_action, dtype=np.float32)
+
+        #     # mtjx_env.py의 전처리 로직 복제: 
+        #     # "st_t_housing = jnp.round(st_t_housing).astype(jnp.int32)"
+        #     # Python/Numpy 환경에서 동일하게 동작하도록 구현
+
+        #     if self.olaf:
+        #         target_temp = st_t_housing[0:1]
+        #     else:
+        #         target_temp = st_t_housing
+                
+        #     st_t_housing_rounded = np.round(target_temp).astype(np.float32)
+        #     t_clip_min = 20.0
+        
+        #     st_t_housing_clipped = np.maximum(st_t_housing_rounded, t_clip_min)
+
+        #     clipped_temp = np.clip(
+        #         st_t_housing_clipped, 
+        #         self.cfg.tjx_cfg.obs_clip[0], 
+        #         self.cfg.tjx_cfg.obs_clip[1]
+        #     )
+        #     obs_components.append(clipped_temp)
+
+        
+        # thermal_obs 처리
+        # thermal_history = self.thermal_obs.step(obs.motor_temp)
+
+        # # Concatenate all components
+        # obs_arr = np.concatenate(obs_components, thermal_history)
+
+        # self.obs_history = np.roll(self.obs_history, obs_arr.size)
+        # self.obs_history[: obs_arr.size] = obs_arr
+
+        # -----------------------------------------------------------
+        # 4. Inference
+        # -----------------------------------------------------------
         jit_action, _ = self.jit_inference_fn(jnp.asarray(self.obs_history), self.rng)
 
         action = np.asarray(jit_action, dtype=np.float32).copy()

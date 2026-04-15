@@ -15,4 +15,4 @@ python toddlerbot/policies/run_policy.py --robot toddlerbot\
                                          --policy thermal_walk \
                                          --sim real \
                                          --no-plot \
-                                         --gin_file "ablation/model_c_h.gin"
+                                         --gin-file "ablation/model_d_l_o_u.gin"

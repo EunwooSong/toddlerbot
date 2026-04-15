@@ -55,11 +55,6 @@ class BaseSim(ABC):
     def get_observation(self) -> Obs:
         pass
 
-    # 추상화 method 추가
-    @abstractmethod
-    def get_motor_temp(self) -> list:
-        pass
-
     @abstractmethod
     def close(self):
         pass

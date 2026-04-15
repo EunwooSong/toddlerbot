@@ -8,7 +8,7 @@ from toddlerbot.policies.mtjx_policy import MTJXPolicy
 from toddlerbot.sim import Obs
 from toddlerbot.sim.robot import Robot
 from toddlerbot.tools.joystick import Joystick
-from heat2torque.envs.config import MTJXConfig
+from heat2torque.agent.tmjx_config import TMJXConfig
 
 class ThermalWalkPolicy(MTJXPolicy, policy_name="thermal_walk"):
     """Walking policy for the toddlerbot robot."""
@@ -32,7 +32,7 @@ class ThermalWalkPolicy(MTJXPolicy, policy_name="thermal_walk"):
             joystick (Optional[Joystick], optional): Joystick instance for manual control. Defaults to None.
             fixed_command (Optional[npt.NDArray[np.float32]], optional): Predefined command array for the robot. Defaults to None.
         """
-        env_cfg = MTJXConfig(get_env_config("_T_Walk"))
+        env_cfg = TMJXConfig(get_env_config("_T_Walk"))
         self.cycle_time = env_cfg.action.cycle_time
         self.command_discount_factor = np.array([0.5, 1.0, 0.75], dtype=np.float32)
 

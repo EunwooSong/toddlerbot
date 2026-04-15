@@ -12,4 +12,4 @@ export MUJOCO_GL="egl"
 cd ~/eunwoo/back/toddlerbot
 
 # run policy
-python toddlerbot/policies/run_policy.py --robot toddlerbot --policy stand --sim real --config-override "TJXEnvConfig.use_basic_obs=True"
+python toddlerbot/policies/run_policy.py --robot toddlerbot --policy stand --sim real --no-plot

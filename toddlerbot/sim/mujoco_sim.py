@@ -19,10 +19,10 @@ from toddlerbot.utils.file_utils import find_robot_file_path
 from toddlerbot.utils.math_utils import quat2euler, quat_inv, rotate_vec
 
 # feat: heat2torque 결합
-from heat2torque.envs.tjx_env import ThermalJaxEnv
-from heat2torque.utils.actuator import matching_actuator_config
-from heat2torque.envs.config import MTJXConfig
-from heat2torque.envs.base import HeatState
+# from heat2torque.envs.tjx_env import ThermalJaxEnv
+# from heat2torque.utils.actuator import matching_actuator_config
+# from heat2torque.envs.config import MTJXConfig
+# from heat2torque.envs.base import HeatState
 
 
 
@@ -135,27 +135,27 @@ class MuJoCoSim(BaseSim):
         except KeyError:
             print("No keyframe named 'home' found in the model.")
 
-        # init tjx env
-        acts = matching_actuator_config(self.robot)
-        # cfg: no, DR
-        cfg = MTJXConfig()
-        # 아래 내용도 나중에 arguments로 받아야함
-        cfg.tjx_cfg.use_basic_obs = True
-        cfg.tjx_cfg.use_derate = True
-        self.tjx_env = ThermalJaxEnv(acts, cfg=cfg, dt=self.dt)
-        self.tjx_cfg = cfg.tjx_cfg
+        # # init tjx env
+        # acts = matching_actuator_config(self.robot)
+        # # cfg: no, DR
+        # cfg = MTJXConfig()
+        # # 아래 내용도 나중에 arguments로 받아야함
+        # cfg.tjx_cfg.use_basic_obs = True
+        # cfg.tjx_cfg.use_derate = True
+        # self.tjx_env = ThermalJaxEnv(acts, cfg=cfg, dt=self.dt)
+        # self.tjx_cfg = cfg.tjx_cfg
 
-        # 초기 heat_state 설정
-        # 주변 온도는 cfg로 주어졌다고 가정
-        # 모터 초기 온도는 향후 주어진다고 가정
-        # 모터 초기 온도의 housing, core 온도는 동일하다고 가정
-        self.heat_state = HeatState(
-            np.zeros(len(acts)),
-            np.full((len(acts), ), cfg.tjx_cfg.c_a),
-            np.full((len(acts), ), cfg.tjx_cfg.c_a),
-            np.zeros(len(acts)),
-            self.tjx_env.overheat,
-        )
+        # # 초기 heat_state 설정
+        # # 주변 온도는 cfg로 주어졌다고 가정
+        # # 모터 초기 온도는 향후 주어진다고 가정
+        # # 모터 초기 온도의 housing, core 온도는 동일하다고 가정
+        # self.heat_state = HeatState(
+        #     np.zeros(len(acts)),
+        #     np.full((len(acts), ), cfg.tjx_cfg.c_a),
+        #     np.full((len(acts), ), cfg.tjx_cfg.c_a),
+        #     np.zeros(len(acts)),
+        #     self.tjx_env.overheat,
+        # )
         # 초기 주변 온도는 arguments로 받아야 함. --init-temp -> gin으로 전달
     
     # 하우징의 값이 들어오면, core와 동일하게 온도를 초기화함
@@ -370,8 +370,8 @@ class MuJoCoSim(BaseSim):
         obs = None
         # 온도 obs추가
         # feat: housing 값 int로 변환해서 obs로 넣어줌
-        motor_temp = self.heat_state.st_t_housing
-        motor_temp = np.round(motor_temp).astype(np.int32)
+        # motor_temp = self.heat_state.st_t_housing
+        # motor_temp = np.round(motor_temp).astype(np.int32)
         obs = Obs(
             time=time,
             motor_pos=motor_pos_arr,
@@ -383,13 +383,10 @@ class MuJoCoSim(BaseSim):
             euler=torso_euler,
             joint_pos=joint_pos_arr,
             joint_vel=joint_vel_arr,
-            motor_temp=motor_temp
+            motor_temp=np.zeros(30),
         )
         
         return obs
-
-    def get_motor_temp(self) -> HeatState:
-        return self.heat_state
 
     def get_mass(self) -> float:
         """Calculate and return the mass of the subtree.
@@ -548,11 +545,11 @@ class MuJoCoSim(BaseSim):
             )
 
             # tjx_env 적용
-            self.heat_state = self.tjx_env.step_runtime_thermal(
-                self.heat_state,
-                self.data.ctrl,
-                self.dt
-            )
+            # self.heat_state = self.tjx_env.step_runtime_thermal(
+            #     self.heat_state,
+            #     self.data.ctrl,
+            #     self.dt
+            # )
 
             # derate 사용시, 진행
             if self.tjx_cfg.use_derate:

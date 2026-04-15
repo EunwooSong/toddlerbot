@@ -19,6 +19,6 @@ python toddlerbot/policies/run_policy.py \
     --policy walk \
     --sim real \
     --vis render \
-    --config-override "TJXEnvConfig.use_basic_obs=True,TJXEnvConfig.c_a=25.3"\
+    --no-plot
     # --command "0 0 0 0 0 0 0 0"
-    # --no-plot \
+    #s \

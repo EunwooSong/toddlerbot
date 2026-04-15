@@ -57,7 +57,7 @@ def calibrate_dynamixel(port: str, robot: Robot, group: str):
             init_pos[id] = np.pi / 4 * round(state.pos / (np.pi / 4))
         else:
             init_pos[id] = state.pos
-
+        print(f"id: {id}, temp: {state.temp}")
     robot.set_joint_attrs("type", "dynamixel", "init_pos", init_pos, group)
 
     controller.close_motors()
