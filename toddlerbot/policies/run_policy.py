@@ -313,7 +313,10 @@ def plot_results(
 
 # @profile()
 def run_policy(
-    robot: Robot, sim: BaseSim, policy: BasePolicy, vis_type: str, plot: bool
+    robot: Robot, sim: BaseSim, policy: BasePolicy, vis_type: str, plot: bool,
+    run_time_sec: float = 0.0,
+    cool_down_sec: float = 0.0,
+    cool_down_policy_name: str = "",
 ):
     """Executes a control policy on a robot within a simulation environment, logging data and optionally visualizing results.
 
@@ -497,43 +500,61 @@ def run_policy(
             if ("real" in sim.name or vis_type == "view") and time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 
-        #try: 
-            # cool_down_list = []
-            # if "real" in sim.name:
-            #     log("Record Motor Temperature Cool Down (time, mA, temp)", header=header_name)
-            #     step_idx = 0
-            #     time_until_next_step = 0.0
-            #     start_time = time.time()
-            #     print("wait 5 sec...")
-            #     time.sleep(5)
-            #     sim.dynamixel_controller.disable_motors()
-                
-            #     print("desabled... wait 3 sec...")
-            #     time.sleep(5)
-            #     while step_idx < 45000:
-            #         step_start = time.time()
+            if run_time_sec > 0 and (time.time() - start_time) >= run_time_sec:
+                log(f"Run time limit ({run_time_sec:.0f}s) reached. Stopping.", header=header_name)
+                break
 
-            #         # Get the latest state from the queue
-            #         obs = sim.get_observation()
-            #         obs.time -= start_time
+        if cool_down_sec > 0 and "real" in sim.name:
+            log(f"Starting cool-down phase ({cool_down_sec:.0f}s).", header=header_name)
+            cool_down_policy: BasePolicy | None = None
+            if cool_down_policy_name:
+                CoolDownPolicyClass = get_policy_class(cool_down_policy_name)
+                init_motor_pos = sim.get_observation().motor_pos
+                cool_down_policy = CoolDownPolicyClass(cool_down_policy_name, robot, init_motor_pos)
+                log(f"Cool-down running '{cool_down_policy_name}' policy.", header=header_name)
+            else:
+                log("Cool-down with motors disabled.", header=header_name)
+                assert isinstance(sim, RealWorld)
+                sim.dynamixel_controller.disable_motors()
 
-            #         # 시간, 모터 전류(mA), 모터 온도 
-            #         cool_down_list.append((obs.time, obs.motor_tor, obs.motor_temp))
+            cool_down_steps = int(cool_down_sec / policy.control_dt)
+            cool_down_start = time.time()
+            cool_down_idx = 0
+            cool_down_time_until_next = 0.0
+            p_bar.reset(total=cool_down_steps)
+            p_bar.set_description("Cool-down")
+            try:
+                while cool_down_idx < cool_down_steps:
+                    cd_step_start = time.time()
+                    obs = sim.get_observation()
+                    obs.time -= cool_down_start
 
-            #         step_idx += 1
+                    if cool_down_policy is not None:
+                        _, cd_motor_target = cool_down_policy.step(obs, True)
+                        cd_motor_angles: Dict[str, float] = {
+                            name: angle
+                            for name, angle in zip(robot.motor_ordering, cd_motor_target)
+                        }
+                        sim.set_motor_target(cd_motor_angles)
+                        sim.step()
 
-            #         p_bar_steps = int(1 / policy.control_dt)
-            #         if step_idx % p_bar_steps == 0:
-            #             p_bar.update(p_bar_steps)
+                    # 시간, 모터 전류(mA), 모터 온도
+                    cool_down_list.append((obs.time, obs.motor_tor, obs.motor_temp))
+                    cool_down_idx += 1
 
-            #         step_end = time.time()
+                    p_bar_steps = int(1 / policy.control_dt)
+                    if cool_down_idx % p_bar_steps == 0:
+                        p_bar.update(p_bar_steps)
 
-
-            #         time_until_next_step = start_time + policy.control_dt * step_idx - step_end
-            #         if ("real" in sim.name or vis_type == "view") and time_until_next_step > 0:
-            #             time.sleep(time_until_next_step)
-        # except Exception as ex:
-        #     log(f"Error. Skip cooldown logging task... {ex}", header=header_name)
+                    cd_step_end = time.time()
+                    cool_down_time_until_next = (
+                        cool_down_start + policy.control_dt * cool_down_idx - cd_step_end
+                    )
+                    if cool_down_time_until_next > 0:
+                        time.sleep(cool_down_time_until_next)
+            except KeyboardInterrupt:
+                log("KeyboardInterrupt during cool-down. Ending early.", header=header_name)
+            log("Cool-down complete.", header=header_name)
     
     except KeyboardInterrupt:
         log("KeyboardInterrupt recieved. Closing...", header=header_name)
@@ -735,6 +756,24 @@ def main(args=None):
         help="Skip the plot functions.",
     )
     parser.add_argument(
+        "--run-time",
+        type=float,
+        default=0.0,
+        help="Maximum run time in seconds for the active phase (0 = unlimited).",
+    )
+    parser.add_argument(
+        "--cool-down-time",
+        type=float,
+        default=0.0,
+        help="Cool-down phase duration in seconds after the active phase (0 = skip).",
+    )
+    parser.add_argument(
+        "--cool-down-policy",
+        type=str,
+        default="",
+        help="Policy to run during cool-down (e.g. 'stand'). If empty, motors are disabled.",
+    )
+    parser.add_argument(
         "--config-override",
         type=str,
         default="",
@@ -852,7 +891,7 @@ def main(args=None):
     # print(f"Time taken to initialize sim: {t2 - t1:.2f} s")
     # print(f"Time taken to initialize policy: {t3 - t2:.2f} s")
 
-    run_policy(robot, sim, policy, args.vis, args.plot)
+    run_policy(robot, sim, policy, args.vis, args.plot, args.run_time, args.cool_down_time, args.cool_down_policy)
 
 
 if __name__ == "__main__":
