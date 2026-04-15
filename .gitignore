@@ -179,3 +179,9 @@ cython_debug/
 # Datasets
 datasets/*.lz4
 toddlerbot/policies/checkpoints/teleop_model*
+.ablation
+
+# Experiment logs
+experiment_log_*.txt
+logs/
+output_policy/

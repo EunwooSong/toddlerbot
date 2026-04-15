@@ -1,6 +1,7 @@
 import os
 
 os.environ["USE_JAX"] = "true"
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '.25'
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=true"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
@@ -49,6 +50,8 @@ from heat2torque.envs.wrapper import ThermalCurriculumWrapper
 import matplotlib.pyplot as plt # 1. Matplotlib 임포트
 
 jax.config.update("jax_default_matmul_precision", 'high')
+
+OUTPUT_DIR = "results"
 
 
 def dynamic_import_envs(env_package: str):
@@ -100,7 +103,7 @@ def render_video(
 
     # Render and save videos for each camera
     for camera in ["perspective", "side", "top", "front"]:
-        video_path = os.path.join("results", run_name, f"{camera}.mp4")
+        video_path = os.path.join(OUTPUT_DIR, run_name, f"{camera}.mp4")
         media.write_video(
             video_path,
             env.render(
@@ -119,7 +122,7 @@ def render_video(
     # Arrange the clips in a 2x2 grid
     final_video = clips_array([[clips[0], clips[1]], [clips[2], clips[3]]])
     # Save the final concatenated video
-    final_video.write_videofile(os.path.join("results", run_name, "eval.mp4"))
+    final_video.write_videofile(os.path.join(OUTPUT_DIR, run_name, "eval.mp4"))
 
 
 def log_metrics(
@@ -163,33 +166,35 @@ def log_metrics(
         log_string += f"""{"Mean reward:":>{pad}} {metrics["eval/episode_reward"]:.3f}\n"""
     
     # --- 2. 온도 지표 복원 및 요약 출력 (하단 섹션) ---
-    # Brax Evaluator가 (마지막값/에피소드길이)로 보낸 값을 다시 복원합니다.
-    avg_len = metrics.get("eval/avg_episode_length", 1.0)
-    
-    def get_final_temp(key):
-        # 실제 확인된 키 경로인 eval/episode/를 접두사로 사용합니다.
+    # eval_metrics (jnp.where(done, T, 0.0)) 패턴은 eval unroll(250 step)에서
+    # eval_done(reset_steps=5000)이 발동하지 않아 넘어지지 않은 env는 0.0이 되어
+    # 평균값이 희석됨. 대신 매 step 기록되는 heat_metrics 키(housing_avg 등)를 사용:
+    #   eval/episode_housing_avg = sum(T over episode) → / avg_len = 에피소드 평균 온도
+    avg_len = max(metrics.get("eval/avg_episode_length", 1.0), 1.0)
+
+    def get_avg_temp(key):
+        """heat_metrics 키로 eval/episode 누적값을 에피소드 평균 온도로 변환."""
         full_key = f"eval/episode_{key}"
         val = metrics.get(full_key)
-        
         if val is None:
             return None
-        return val #/ avg_len # 에피소드 종료 시점의 실제 물리값 복원
+        return val / avg_len  # sum → 에피소드 평균
 
-    # 출력할 지표 정의 (이름, 키값, 포맷)
+    # 출력할 지표 정의 (이름, heat_metrics 키, 포맷)
     temp_metrics = [
-        ("Core Temp (Avg/Max)", "temp_core_avg", "temp_core_max", ".2f"),
-        ("Housing Temp (Avg/Max)", "temp_housing_avg", "temp_housing_max", ".2f"),
-        ("Temp Progress", "temp_progress", None, ".4f"),
-        ("Torque Derate(MSE)", "temp_torque_derate(MSE)", None, ".4f"),
+        ("Core Temp (Avg/Max)", "core_avg", "core_max", ".2f"),
+        ("Housing Temp (Avg/Max)", "housing_avg", "housing_max", ".2f"),
+        ("Torque Derate(MSE)", "torque_derate(MSE)", None, ".4f"),
+        ("Overheat Penalty", "overheat_penalty", None, ".4f"),
     ]
 
-    log_string += f"""{"[ Thermal Status (Final Step) ]".center(width)}\n"""
-    
+    log_string += f"""{"[ Thermal Status (Ep. Average) ]".center(width)}\n"""
+
     for label, avg_k, max_k, fmt in temp_metrics:
-        v_avg = get_final_temp(avg_k)
+        v_avg = get_avg_temp(avg_k)
         if v_avg is not None:
-            if max_k: # Avg와 Max를 한 줄에 표시하여 가독성 높임
-                v_max = get_final_temp(max_k)
+            if max_k:
+                v_max = get_avg_temp(max_k)
                 log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}} / {v_max:{fmt}}\n"""
             else:
                 log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}}\n"""
@@ -447,7 +452,7 @@ def train(
 
     # eval_env = ThermalCurriculumWrapper(eval_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
 
-    exp_folder_path = os.path.join("results", run_name)
+    exp_folder_path = os.path.join(OUTPUT_DIR, run_name)
     os.makedirs(exp_folder_path, exist_ok=True)
 
     restore_checkpoint_path = (
@@ -465,6 +470,9 @@ def train(
 
     # Save env config to a file and print it
     env_config_dict = dataclass2dict(env.cfg)  # Convert dataclass to dictionary
+    # thermal_cfg는 dataclass field가 아닌 __init__ 속성이므로 asdict()에 포함되지 않음
+    if hasattr(env.cfg, 'thermal_cfg'):
+        env_config_dict['thermal_cfg'] = dataclass2dict(env.cfg.thermal_cfg)
     with open(os.path.join(exp_folder_path, "env_config.json"), "w") as f:
         json.dump(env_config_dict, f, indent=4)
 
@@ -616,9 +624,9 @@ def evaluate(
         env.obs_size, env.privileged_obs_size, env.action_size
     )
     make_policy = ppo_networks.make_inference_fn(ppo_network)
-    policy_path = os.path.join("results", run_name, "best_policy")
+    policy_path = os.path.join(OUTPUT_DIR, run_name, "best_policy")
     if not os.path.exists(policy_path):
-        policy_path = os.path.join("results", run_name, "policy")
+        policy_path = os.path.join(OUTPUT_DIR, run_name, "policy")
 
     params = model.load_params(policy_path)
     inference_fn = make_policy(params, deterministic=True)
@@ -653,7 +661,7 @@ def evaluate(
         wandb.log(
             {
                 "video": wandb.Video(
-                    os.path.join("results", run_name, "eval.mp4"), format="mp4"
+                    os.path.join(OUTPUT_DIR, run_name, "eval.mp4"), format="mp4"
                 )
             }
         )
@@ -721,7 +729,16 @@ def main(args=None):
         default="-1",
         help="Select the GPU index. This is equivalent to setting the CUDA_VISIBLE_DEVICES environment variable. A value of -1 (default) makes all GPUs visible."
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default="results",
+        help="Directory to save results.",
+    )
     args = parser.parse_args()
+
+    global OUTPUT_DIR
+    OUTPUT_DIR = args.output
 
     # CUDA 설정
     if args.gpu != "-1":
@@ -846,10 +863,11 @@ def main(args=None):
             add_domain_rand=False,
             **kwargs,
         )
-        # test_env에만 cl wrapper 적용
+        # Curriculum Wrapper 적용
         env = ThermalCurriculumWrapper(env, train_cfg.num_timesteps, train_cfg.num_envs, env_cfg)
         eval_env = ThermalCurriculumWrapper(eval_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
         test_env = ThermalCurriculumWrapper(test_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
+
 
     else:
         env = EnvClass(
@@ -906,7 +924,7 @@ def main(args=None):
     run_name = f"{robot.name}_{args.env}_ppo{config_override_str}_{gin_file_list[1]}_{time_str}"
 
     if len(args.eval) > 0:
-        if os.path.exists(os.path.join("results", run_name)):
+        if os.path.exists(os.path.join(OUTPUT_DIR, run_name)):
             evaluate(test_env, make_networks_factory, run_name)
         else:
             raise FileNotFoundError(f"Run {args.eval} not found.")

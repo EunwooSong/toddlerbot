@@ -1,0 +1,28 @@
+# Thermal Safety Ablation: Safety ON, All Motors (0-29)
+# ThermalSafetyWrapper 활성화, 전체 모터 검사
+# 기본 커리큘럼(cl_modified) 설정 위에 Safety Wrapper 적용
+
+# 학습 환경
+ThermalEnvConfig.model_order_2 = True
+ThermalEnvConfig.use_derate = True
+ThermalEnvConfig.use_thermal = True
+ThermalEnvConfig.use_w_offset = True
+
+# 관측 값 설정
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_num = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+
+# 리워드 설정
+ThermalRewardScales.safety_penalty = 0.2
+ThermalRewardScales.cbf_penalty = 0.0
+
+# 커리큘럼 설정 (cl_modified 기준)
+ColdToHotCurriculumConfig.threshold_ratio = 0.5
+ColdToHotCurriculumConfig.use_ep_sampling = True
+ColdToHotCurriculumConfig.init_cold = [15.0, 30.0]
+ColdToHotCurriculumConfig.init_hot = [45.0, 65.0]
+
+# Safety Wrapper: 전체 모터 검사, 기본 패널티
+ThermalSafetyConfig.enabled = True
+ThermalSafetyConfig.thermal_penalty = -10.0
+ThermalSafetyConfig.monitor_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]

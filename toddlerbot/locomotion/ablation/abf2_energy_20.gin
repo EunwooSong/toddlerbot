@@ -1,0 +1,15 @@
+# 우리가 제안하는 컴포넌트
+ThermalEnvConfig.model_order_2 = True
+ThermalEnvConfig.use_derate = False
+ThermalEnvConfig.use_thermal = False
+
+# 권선 온도 관련 설정
+ThermalEnvConfig.use_w_offset = False
+
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_num = []
+
+ThermalRewardScales.safety_penalty = 0.0
+ThermalRewardScales.cbf_penalty = 0.0
+
+RewardScales.energy = 1.0   # 20x

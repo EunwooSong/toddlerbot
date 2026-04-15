@@ -11,7 +11,21 @@ robots=("toddlerbot")
 envs=("_T_Walk")
 
 gin_files=(
-	"ablation/model_ours_with_cl"
+    "ablation/model_c_h"
+    "ablation/model_d_l_o_u"
+    "ablation/model_e_m"
+    "ablation/model_a_f"
+    "ablation/model_g"
+    "ablation/model_b"
+    "ablation/model_i"
+    "ablation/model_j"
+    "ablation/model_k"
+    "ablation/model_n"
+    "ablation/model_p"
+    "ablation/model_q"
+    "ablation/model_r"
+    "ablation/model_s"
+    "ablation/model_t"
 )
 
 # Iterate over all configurations
