@@ -5,16 +5,16 @@ import json
 import os
 import pickle
 import pkgutil
-import threading  # [추가] 비동기 저장을 위한 threading
 import time
 from typing import Any, Dict, List
 
-import gin # [추가] gin 모듈 임포트
 import matplotlib.pyplot as plt
 import numpy as np
 import numpy.typing as npt
 from moviepy.editor import ImageSequenceClip
 from tqdm import tqdm
+import gin
+from toddlerbot.utils.misc_utils import dataclass2dict, parse_value
 
 from toddlerbot.policies import BasePolicy, get_policy_class, get_policy_names
 from toddlerbot.policies.balance_pd import BalancePDPolicy
@@ -45,9 +45,13 @@ from toddlerbot.visualization.vis_plot import (
     # plot_path_tracking,
 )
 
+# HeatState 정보 추가
+from heat2torque.envs.base import HeatState
+from heat2torque.envs.config import MTJXConfig
 # from toddlerbot.utils.misc_utils import profile
 
-# [추가] 비동기 저장 함수
+import threading
+
 def _async_save(self, data_to_save, filename):
     with open(filename, 'wb') as f:
         pickle.dump(data_to_save, f)
@@ -80,9 +84,10 @@ dynamic_import_policies("toddlerbot.policies")
 def plot_results(
     robot: Robot,
     loop_time_list: List[List[float]],
-    obs_list: List[Obs],
+    obs_list: List[Obs], # TODO: ThermalOBS 추가할 것 (DONE)
     control_inputs_list: List[Dict[str, float]],
     motor_angles_list: List[Dict[str, float]],
+    heat_state_list: List[HeatState],
     exp_folder_path: str,
 ):
     """Generates and saves various plots to visualize the performance and behavior of a robot during an experiment.
@@ -93,6 +98,7 @@ def plot_results(
         obs_list (List[Obs]): A list of observations recorded during the experiment.
         control_inputs_list (List[Dict[str, float]]): A list of dictionaries containing control inputs applied to the robot.
         motor_angles_list (List[Dict[str, float]]): A list of dictionaries containing motor angles recorded during the experiment.
+        heat_state_list (List[HeatState]): A list of dictionaries containing motor temperatures recorded during the experiment.
         exp_folder_path (str): The path to the folder where the plots will be saved.
     """
     loop_time_dict: Dict[str, List[float]] = {
@@ -132,6 +138,10 @@ def plot_results(
     motor_pos_dict: Dict[str, List[float]] = {}
     motor_vel_dict: Dict[str, List[float]] = {}
     motor_tor_dict: Dict[str, List[float]] = {}
+    # feat: Add temp dict
+    motor_temp_dict: Dict[str, List[float]] = {}  # 관측값
+    heatout_housing_dict: Dict[str, List[float]] = {}     # Sim상 계산된 heatout 값
+
     for i, obs in enumerate(obs_list):
         time_obs_list.append(obs.time)
         # lin_vel_obs_list.append(obs.lin_vel)
@@ -147,14 +157,22 @@ def plot_results(
                 motor_pos_dict[motor_name] = []
                 motor_vel_dict[motor_name] = []
                 motor_tor_dict[motor_name] = []
+                motor_temp_dict[motor_name] = []
+                heatout_housing_dict[motor_name] = []
 
             # Assume the state fetching is instantaneous
             time_seq_dict[motor_name].append(float(obs.time))
             time_seq_ref_dict[motor_name].append(float(obs.time))
+
             # time_seq_ref_dict[motor_name].append(i * policy.control_dt)
             motor_pos_dict[motor_name].append(obs.motor_pos[j])
             motor_vel_dict[motor_name].append(obs.motor_vel[j])
             motor_tor_dict[motor_name].append(obs.motor_tor[j])
+
+            motor_temp_dict[motor_name].append(obs.motor_temp[j])
+
+            # obs와 동일한 shape, 
+            heatout_housing_dict[motor_name].append(heat_state_list[i][j])
 
     action_dict: Dict[str, List[float]] = {}
     joint_pos_ref_dict: Dict[str, List[float]] = {}
@@ -258,6 +276,27 @@ def plot_results(
         y_label="Torque (Nm) or Current (mA)",
         file_name="motor_tor_tracking",
     )
+
+    # feat: Tracking temp
+    # 임시로, 20-80의 범위를 추가로 설정.
+    temp_limits = robot.joint_limits
+    for k, v in temp_limits.items():
+        v = [20.0, 85.0]
+
+    # TODO: Thermal OBS에 대한 값 추가할 것.
+    # 시뮬레이션 상에서 계산된 것 
+    plot_joint_tracking(
+        time_seq_dict,
+        time_seq_ref_dict,
+        motor_temp_dict,
+        heatout_housing_dict, # ref
+        temp_limits,
+        save_path=exp_folder_path,
+        y_label="Tempetuator (℃)",
+        file_name="motor_temp_tracking",
+        line_suffix = ["_obs", "_sim"]
+    )
+
     plot_joint_tracking_single(
         time_seq_dict,
         motor_vel_dict,
@@ -294,6 +333,10 @@ def run_policy(
     obs_list: List[Obs] = []
     control_inputs_list: List[Dict[str, float]] = []
     motor_angles_list: List[Dict[str, float]] = []
+    motor_tor_list = []
+    heat_state_list = []
+    obs_heat_list = []
+    cool_down_list = []
 
     n_steps_total = (
         float("inf")
@@ -301,7 +344,20 @@ def run_policy(
         else policy.n_steps_total
     )
 
-    # [수정] 로그 저장 경로 설정을 루프 시작 전으로 이동 (실시간 저장을 위해)
+    # 이번만 20분간 step 진행! -> Nope
+    # n_steps_total = (
+    #     float("inf")
+    #     if "real" in sim.name and "fixed" not in policy.name
+    #     else policy.n_steps_total
+    # )
+
+    step_counter = 0
+    # 500 step 데이터를 모을 리스트들을 관리할 딕셔너리
+    # 혹은 기존 리스트를 슬라이싱해서 사용할 수도 있지만, 
+    # 독립적인 저장을 위해 별도의 temp_buffer를 만드는 것이 안전합니다.
+    temp_log_buffer = []
+
+
     exp_name = f"{robot.name}_{policy.name}_{sim.name}"
     time_str = time.strftime("%Y%m%d_%H%M%S")
     exp_folder_path = f"results/{exp_name}_{time_str}"
@@ -359,11 +415,12 @@ def run_policy(
                 sim.dynamixel_controller.disable_motors(policy.disable_motor_indices)
                 policy.toggle_motor = False
 
+            # (DONE) TODO: 온도 센서를 policy obs로 넣기 위해 policy.step을 수정해야함.
+            # motor_temp가 그 정보임
             control_inputs, motor_target = policy.step(obs, "real" in sim.name)
-
             inference_time = time.time()
 
-            motor_angles: Dict[str, float] = {}
+            motor_angles: Dict[str, float] = {} 
             for motor_name, motor_angle in zip(robot.motor_ordering, motor_target):
                 motor_angles[motor_name] = motor_angle
 
@@ -376,6 +433,12 @@ def run_policy(
             obs_list.append(obs)
             control_inputs_list.append(control_inputs)
             motor_angles_list.append(motor_angles)
+
+            # heat state 저장
+            heat_state_list.append(sim.get_motor_temp().st_t_housing)
+
+            # 측정된 모터 온도 저장
+            # obs_heat_list.append(obs.motor_temp)
 
             step_idx += 1
 
@@ -396,7 +459,16 @@ def run_policy(
                 ]
             )
 
-            # [추가] 500 step 마다 비동기 로그 저장
+            # 1. 현재 스텝의 데이터를 임시 버퍼에 저장
+            current_step_data = {
+                "obs": obs,
+                "control": control_inputs,
+                "motor_angle": motor_angles,
+                "heat_state": sim.get_motor_temp().st_t_housing
+            }
+            temp_log_buffer.append(current_step_data)
+            step_counter += 1
+
             if step_idx % 500 == 0:
                 # 파일명: results/.../logs/log_data500.pkl 순서
                 filename = os.path.join(async_log_path, f"log_data{step_idx}.pkl")
@@ -407,20 +479,22 @@ def run_policy(
                     "obs_list": list(obs_list[-500:]),
                     "control_inputs_list": list(control_inputs_list[-500:]),
                     "motor_angles_list": list(motor_angles_list[-500:]),
+                    "heat_state_list": list(heat_state_list[-500:])
                 }
 
                 # 비동기 스레드 실행
                 threading.Thread(
-                    target=_async_save,
+                    target=_async_save, 
                     args=(None, data_to_save, filename),
                     daemon=True
                 ).start()
 
             if step_idx > 0 and step_idx % 100 == 0:
-                 # policy 내부 상태 확인용 (필요시 활성화)
-                 # print(step_idx)
-                 pass
-            
+                # policy 내부의 특정 상태 변수(예: self.phase 등)를 출력하여 값이 튀는지 확인
+                # 예시: print(f"Step {step_idx}: Policy Internal State: {policy.some_variable}")
+                print(step_idx)
+                
+
             time_until_next_step = start_time + policy.control_dt * step_idx - step_end
             # print(f"time_until_next_step: {time_until_next_step * 1000:.2f} ms")
             if ("real" in sim.name or vis_type == "view") and time_until_next_step > 0:
@@ -496,10 +570,18 @@ def run_policy(
 
         sim.close()
 
+    # 저장할 데이터 추출
+    obs_heat_list = [obs.motor_temp for obs in obs_list]
+    motor_tor_list = [obs.motor_tor for obs in obs_list]
+
     log_data_dict: Dict[str, Any] = {
-        "obs_list": obs_list,
+        "obs_list": obs_list,               # [(스텝마다 여러 정보들), ...] # obs_list[0].time <- elapsed_time에 해당함
         "control_inputs_list": control_inputs_list,
         "motor_angles_list": motor_angles_list,
+        "heat_state_list": heat_state_list, # heat_state_list 또한 저장, 시각화 X, 단순 저장 진행
+        "obs_heat_list": obs_heat_list,     # [(모터들의 온도 list), ...]
+        "motor_tor_list": motor_tor_list,   # [(모터들의 전류 list), ...]
+        "cool_down_list": cool_down_list,   # [(시간, 모터 전류(mA), 모터 온도), ...]
     }
 
     if isinstance(policy, SysIDFixedPolicy):
@@ -590,6 +672,7 @@ def run_policy(
             obs_list,
             control_inputs_list,
             motor_angles_list,
+            heat_state_list,
             exp_folder_path,
         )
 
@@ -693,11 +776,16 @@ def main(args=None):
     parser.add_argument(
         "--config-override",
         type=str,
-        default=None,
-        help="Path to the gin configuration file (only for mtjx policy, e.g., /ablation/model_*.gin)",
+        default="",
+        help="Override config parameters (e.g., SimConfig.timestep=0.01 ObsConfig.frame_stack=10)",
     )
-
     args = parser.parse_args(args)
+
+    # Bind parameters from --config_override
+    if len(args.config_override) > 0:
+        for override in args.config_override.split(","):
+            key, value = override.split("=", 1)  # Split into key-value pair
+            gin.bind_parameter(key, parse_value(value))
 
     robot = Robot(args.robot)
 
@@ -765,44 +853,16 @@ def main(args=None):
         policy = PolicyClass(
             args.policy, robot, init_motor_pos, args.ckpt, fixed_command=fixed_command
         )
+    # MTJX Policy 추가
     elif issubclass(PolicyClass, MTJXPolicy):
         fixed_command = None
         if len(args.command) > 0:
             fixed_command = np.array(args.command.split(" "), dtype=np.float32)
 
-        model_name_suffix = ""
-        if args.gin_file is not None:
-            # [수정] 요청하신 경로 처리 로직 적용
-            gin_file = args.gin_file
-            
-            # 스크립트 파일의 디렉토리를 기준으로 경로 결합
-            # (만약 gin_file이 절대 경로라면, os.path.join은 앞부분을 무시하고 절대 경로를 사용합니다)
-            gin_file_path = os.path.join(
-                os.path.dirname(__file__),
-                gin_file + ".gin" if not gin_file.endswith(".gin") else gin_file,
-            )
-            
-            # 파일 존재 여부 확인
-            if not os.path.exists(gin_file_path):
-                raise FileNotFoundError(f"File {gin_file_path} not found.")
-
-            # config 로드
-            gin.parse_config_file(gin_file_path)
-            
-            # 모델 이름 추출 (suffix용)
-            filename = os.path.basename(gin_file_path)
-            model_name_suffix = os.path.splitext(filename)[0]
-
         policy = PolicyClass(
-            args.policy, robot, init_motor_pos, args.ckpt, fixed_command=fixed_command
+            args.policy, robot, init_motor_pos, args.ckpt, fixed_command=fixed_command, 
         )
 
-        # policy.name에 모델 이름 추가
-        if model_name_suffix:
-            policy.name += f"_{model_name_suffix}"
-
-        # warmup 돌리기
-        policy.warmup_late()
     elif issubclass(PolicyClass, DPPolicy):
         policy = PolicyClass(
             args.policy, robot, init_motor_pos, args.ckpt, task=args.task
@@ -816,6 +876,7 @@ def main(args=None):
         fixed_command = None
         if len(args.command) > 0:
             fixed_command = np.array(args.command.split(" "), dtype=np.float32)
+            print(fixed_command)
 
         policy = PolicyClass(
             args.policy, robot, init_motor_pos, ip=args.ip, fixed_command=fixed_command
