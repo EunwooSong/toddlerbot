@@ -194,14 +194,17 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
 
             params = model.load_params(policy_path)
 
-            # param이 dict인 경우: values만 list로 변환 후 마지막 요소 제거
+            # dict: {normalizer, policy, value} → [norm, policy, value]
+            # tuple/list: (normalizer, policy) → [norm, policy]
             if isinstance(params, dict):
                 params = list(params.values())
-            # param이 list인 경우: 마지막 요소 제거
-            elif isinstance(params, list):
-                params = params[:-1]
+            elif isinstance(params, (list, tuple)):
+                params = list(params)
 
-            inference_fn = make_policy(params[:-1], deterministic=True)
+            # value network이 포함된 경우(3개)만 제거, 2개면 그대로
+            policy_params = params[:2]
+
+            inference_fn = make_policy(policy_params, deterministic=True)
             jit_inference_fn = jax.jit(inference_fn)
             rng = jax.random.PRNGKey(0)
             jit_inference_fn(self.obs_history, rng)[0].block_until_ready()

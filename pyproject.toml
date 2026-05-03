@@ -20,44 +20,38 @@ dependencies = [
     "colorama",
     "control==0.9.4",
     "diffusers==0.30.3",
+    "dynamixel-sdk==3.7.31",
     "gdown",
     "gin-config",
-    "jax",
-    "jaxlib",
     "joblib",
     "line_profiler",
     "lz4",
-    "loop-rate-limiters",
     "matplotlib",
     "mediapy",
-    "mink",
     "moviepy==1.0.3",
-    "mujoco==3.3.4",
-    "mujoco-mjx==3.2.4",
     "mypy",
     "numpy==1.26.4",
-    "onnxruntime",
-    "onshape-to-robot==1.7.2",
-    "open3d",
+    "onshape-to-robot==0.3.24",
     "openai[realtime]",
     "opencv-python==4.9.0.80",
     "optuna",
     "optuna-dashboard",
     "psycopg2-binary",
     "pupil_apriltags",
-    "pybullet",
     "pygame",
+    "pymunk",
     "pytest",
     "pyserial",
     "PySide6",
-    "rsl-rl-lib==2.3.3",
     "scipy",
     "seaborn",
     "setuptools==75.6.0",
     "sounddevice", 
+    "soundfile",
     "soxr",
     "textual",
     "tqdm",
+    "transforms3d",
     "wandb",
     #"zmq"
 ]
@@ -65,7 +59,11 @@ dependencies = [
 [project.optional-dependencies]
 docs = ["sphinx", "sphinx-tabs", "sphinx-design", "sphinx-autobuild", "furo"]
 test = ["torch==2.3.1", "torchvision==0.18.1"]
+<<<<<<< Updated upstream
 linux = ["jax", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"] #"pynput",
+=======
+linux = ["jax[cuda12]==0.4.28", "pynput", "tensorboard", "torch==2.3.1", "torchvision==0.18.1"]
+>>>>>>> Stashed changes
 macos = ["torch==2.3.1", "torchvision==0.18.1"]
 windows = ["torch==2.3.1", "torchvision==0.18.1"]
 jetson = ["Jetson.GPIO", "pyaudio", "pydub"]

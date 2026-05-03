@@ -1,19 +1,20 @@
 #!/bin/bash
-# Long-term data collection: active walk + stand cool-down, repeated N cycles.
+# Long-term data collection for LPTN identification:
+# random high-frequency motion (heating) + stand cool-down, repeated N cycles.
 #
 # Usage:
 #   ./collect_long_term.sh [cycles] [run_time_sec] [cool_down_sec] [cool_down_policy]
 #
 # Defaults:
-#   cycles=1, run_time_sec=900 (15 min), cool_down_sec=1200 (45 min), cool_down_policy=none
+#   cycles=1, run_time_sec=1500 (25 min), cool_down_sec=3600 (60 min), cool_down_policy=stand
 
-CYCLES=${1:-1}
-RUN_TIME=${2:-900}
-COOL_DOWN_TIME=${3:-1200}
+CYCLES=${1:-5}
+RUN_TIME=${2:-1500}
+COOL_DOWN_TIME=${3:-3600}
 COOL_DOWN_POLICY=${4:-stand}
 
 echo "========================================"
-echo " Long-term data collection"
+echo " Long-term data collection (random motion)"
 echo "  Cycles          : $CYCLES"
 echo "  Run time        : ${RUN_TIME}s ($(( RUN_TIME / 60 ))m)"
 echo "  Cool-down time  : ${COOL_DOWN_TIME}s ($(( COOL_DOWN_TIME / 60 ))m)"
@@ -27,14 +28,13 @@ for i in $(seq 1 "$CYCLES"); do
 
     python toddlerbot/policies/run_policy.py \
         --robot toddlerbot \
-        --policy thermal_walk \
+        --policy random \
         --sim real \
         --vis none \
         --no-plot \
         --run-time "$RUN_TIME" \
         --cool-down-time "$COOL_DOWN_TIME" \
-        --gin-file "ablation/model_c_h.gin"
-        #--cool-down-policy "$COOL_DOWN_POLICY" \
+        #--cool-down-policy "$COOL_DOWN_POLICY"
 
     EXIT_CODE=$?
     echo "-------- Cycle $i done [$(date)]  exit=$EXIT_CODE --------"

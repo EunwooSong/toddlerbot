@@ -47,12 +47,59 @@ from toddlerbot.visualization.vis_plot import (
 
 # from toddlerbot.utils.misc_utils import profile
 
-import threading
+import gc
+import multiprocessing
 
-def _async_save(self, data_to_save, filename):
+def _async_save(data_to_save, filename):
     with open(filename, 'wb') as f:
         pickle.dump(data_to_save, f)
     print(f"Saved: {filename}")
+
+
+def print_motor_temps_humanoid(robot: Robot, sim: BaseSim):
+    """모터 온도를 휴머노이드 형태로 출력."""
+    obs = sim.get_observation()
+    if obs.motor_temp is None:
+        print("Motor temperature data not available.")
+        return
+
+    t = {}
+    for i, name in enumerate(robot.motor_ordering):
+        t[name] = int(obs.motor_temp[i])
+
+    def f(name):
+        return f"{t.get(name, 0):2d}"
+
+    print(f"""
+ ╔══════════ Motor Temperatures (°C) ══════════╗
+ ║                                              ║
+ ║                  ┌─────┐                     ║
+ ║                  │(o_o)│                     ║
+ ║                  └──┬──┘                     ║
+ ║            NY:{f('neck_yaw_drive')}° NP:{f('neck_pitch_act')}°                  ║
+ ║           ┌────┴────┐                        ║
+ ║           │ W1:{f('waist_act_1')}°  │                        ║
+ ║           │ W2:{f('waist_act_2')}°  │                        ║
+ ║     ┌─────┤         ├─────┐                  ║
+ ║  R.Arm    └────┬────┘    L.Arm               ║
+ ║  SP:{f('right_sho_pitch')}°       │       SP:{f('left_sho_pitch')}°              ║
+ ║  SR:{f('right_sho_roll')}°       │       SR:{f('left_sho_roll')}°              ║
+ ║  SY:{f('right_sho_yaw_drive')}°       │       SY:{f('left_sho_yaw_drive')}°              ║
+ ║  ER:{f('right_elbow_roll')}°       │       ER:{f('left_elbow_roll')}°              ║
+ ║  EY:{f('right_elbow_yaw_drive')}°       │       EY:{f('left_elbow_yaw_drive')}°              ║
+ ║  WP:{f('right_wrist_pitch_drive')}°       │       WP:{f('left_wrist_pitch_drive')}°              ║
+ ║  WR:{f('right_wrist_roll')}°       │       WR:{f('left_wrist_roll')}°              ║
+ ║              ┌───┴───┐                       ║
+ ║        R.Leg │       │ L.Leg                 ║
+ ║       HP:{f('right_hip_pitch')}° │       │ HP:{f('left_hip_pitch')}°               ║
+ ║       HR:{f('right_hip_roll')}° │       │ HR:{f('left_hip_roll')}°               ║
+ ║       HY:{f('right_hip_yaw_drive')}° │       │ HY:{f('left_hip_yaw_drive')}°               ║
+ ║       KN:{f('right_knee_act')}° │       │ KN:{f('left_knee_act')}°               ║
+ ║       AR:{f('right_ank_roll')}° │       │ AR:{f('left_ank_roll')}°               ║
+ ║       AP:{f('right_ank_pitch')}° │       │ AP:{f('left_ank_pitch')}°               ║
+ ║              └───────┘                       ║
+ ╚══════════════════════════════════════════════╝""")
+
 
 def dynamic_import_policies(policy_package: str):
     """Dynamically imports all modules within a specified package.
@@ -330,11 +377,18 @@ def run_policy(
     async_log_path = os.path.join(exp_folder_path, "logs")
     os.makedirs(async_log_path, exist_ok=True)
 
+    if "real" in sim.name:
+        print_motor_temps_humanoid(robot, sim)
+
     p_bar = tqdm(total=n_steps_total, desc="Running the policy")
     start_time = time.time()
     step_idx = 0
     time_until_next_step = 0.0
     last_ckpt_idx = -1
+
+    # Issue 4 fix: GC의 gen-2 수집이 ~3분마다 ~1초 stop-the-world를 유발하므로 비활성화
+    gc.disable()
+
     try:
         while step_idx < n_steps_total:
             step_start = time.time()
@@ -423,11 +477,22 @@ def run_policy(
                     "control_inputs_list": list(control_inputs_list[-500:]),
                     "motor_angles_list": list(motor_angles_list[-500:]),
                 }
-                threading.Thread(
+                # Issue 3 fix: threading은 GIL 때문에 pickle 직렬화 중 메인 루프 블로킹.
+                # multiprocessing.Process는 별도 프로세스에서 실행하여 GIL 회피.
+                multiprocessing.Process(
                     target=_async_save,
-                    args=(None, data_to_save, filename),
+                    args=(data_to_save, filename),
                     daemon=True
                 ).start()
+
+                if obs.motor_temp is not None:
+                    max_idx = int(np.argmax(obs.motor_temp))
+                    max_temp = float(obs.motor_temp[max_idx])
+                    max_name = robot.motor_ordering[max_idx]
+                    print(
+                        f"[step {step_idx}] hottest motor: "
+                        f"idx={max_idx} ({max_name}) temp={max_temp:.1f}°C"
+                    )
 
             if step_idx > 0 and step_idx % 100 == 0:
                 print(step_idx)
@@ -443,13 +508,54 @@ def run_policy(
                 break
 
         if cool_down_sec > 0 and "real" in sim.name:
+            # 비동기 플러시: 별도 프로세스에서 직렬화 → 메인 루프 블로킹 없음
+            # 메인 루프는 즉시 cool-down으로 진입하여 온도 측정 끊김 방지
+            log(f"Async-flushing active data and clearing RAM...", header=header_name)
+            active_data_path = os.path.join(exp_folder_path, "active_log_data.pkl")
+            active_data_dict: Dict[str, Any] = {
+                "obs_list": obs_list,
+                "control_inputs_list": control_inputs_list,
+                "motor_angles_list": motor_angles_list,
+                "loop_time_list": loop_time_list,
+            }
+            n_steps_flushed = len(obs_list)
+            multiprocessing.Process(
+                target=_async_save,
+                args=(active_data_dict, active_data_path),
+                daemon=True,
+            ).start()
+            # clear() 대신 빈 리스트 재할당 → 75K 객체 deletion overhead 회피
+            # (참조는 active_data_dict와 자식 프로세스에 남아있고,
+            # 메인은 새 빈 리스트로 즉시 진행)
+            obs_list = []
+            control_inputs_list = []
+            motor_angles_list = []
+            loop_time_list = []
+            del active_data_dict
+            # gc.collect() 호출 안 함 — stop-the-world 회피
+            # gc.disable() 상태 유지 (cool-down phase 동안에도 유지)
+            log(
+                f"Active flush dispatched ({n_steps_flushed} steps). Entering cool-down.",
+                header=header_name,
+            )
+
             log(f"Starting cool-down phase ({cool_down_sec:.0f}s).", header=header_name)
             cool_down_policy: BasePolicy | None = None
             if cool_down_policy_name:
                 CoolDownPolicyClass = get_policy_class(cool_down_policy_name)
                 init_motor_pos = sim.get_observation().motor_pos
                 cool_down_policy = CoolDownPolicyClass(cool_down_policy_name, robot, init_motor_pos)
-                log(f"Cool-down running '{cool_down_policy_name}' policy.", header=header_name)
+
+                # Issue 2 fix: real 모드에서 2초 전환은 너무 빠름 → 5초로 재설정
+                cd_prep_duration = 5.0
+                cool_down_policy.prep_duration = cd_prep_duration
+                cool_down_policy.prep_time, cool_down_policy.prep_action = cool_down_policy.move(
+                    -cool_down_policy.control_dt,
+                    init_motor_pos,
+                    cool_down_policy.default_motor_pos,
+                    cd_prep_duration,
+                )
+                log(f"Cool-down running '{cool_down_policy_name}' policy (prep={cd_prep_duration:.1f}s).", header=header_name)
             else:
                 log("Cool-down with motors disabled.", header=header_name)
                 assert isinstance(sim, RealWorld)
@@ -498,6 +604,7 @@ def run_policy(
         log("KeyboardInterrupt recieved. Closing...", header=header_name)
 
     finally:
+        gc.enable()
         p_bar.close()
 
         os.makedirs(exp_folder_path, exist_ok=True)
@@ -508,6 +615,8 @@ def run_policy(
 
         sim.close()
 
+    # 냉각을 거친 경우 active 데이터는 active_log_data.pkl에 이미 저장됨.
+    # 여기서는 cool_down_list + 냉각 없이 종료된 경우의 active 데이터를 저장.
     log_data_dict: Dict[str, Any] = {
         "obs_list": obs_list,
         "control_inputs_list": control_inputs_list,

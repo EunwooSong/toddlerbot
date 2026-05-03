@@ -126,6 +126,10 @@ class BasePolicy(ABC):
     def reset(self):
         pass
 
+    def warmup_late(self):
+        """기본 no-op. JIT 등 무거운 초기화가 필요한 정책만 override."""
+        pass
+
     @abstractmethod
     def step(
         self, obs: Obs, is_real: bool = False
