@@ -1,0 +1,87 @@
+# ============================================================================
+#  model_ours — 최종 학습 구성 (thermal-aware locomotion, 기여 본체)
+#  핵심: 전압‑포화 물리 derating + 장주기 thermal persist + cold→hot 커리큘럼.
+#  reward-shaping(CBF/penalty) 미사용 — 과열은 *물리적으로* 토크붕괴→낙상
+#  으로만 처벌, 에이전트가 gait 로 자연 냉각/회피를 학습.
+# ============================================================================
+
+# ── 열모델/derate 모드 ───────────────────────────────────────────────────
+ThermalEnvConfig.model_order_2 = True      # 결합 2차 LPTN (권선+하우징)
+ThermalEnvConfig.use_thermal   = True
+ThermalEnvConfig.use_derate    = True      # 전압‑포화 모터모델(=core derate)
+ThermalEnvConfig.use_coupling  = True      # 모터간 열 커플링(R_ch/R_ck, json 토폴로지)
+ThermalEnvConfig.use_hard_const = False    # 하드 클리핑 미사용(전압모델이 한계 담당)
+
+# ── 초기 권선온도 처리 ───────────────────────────────────────────────────
+ThermalEnvConfig.use_w_offset = True       # 권선 = 하우징 + offset 로 초기화
+ThermalEnvConfig.use_rand_w   = False
+ThermalEnvConfig.offset = [0.0, 15.0]      # 권선 오프셋 [°C] (첫 reset 용)
+
+# ── DR / 커리큘럼 / 노이즈 토글 ──────────────────────────────────────────
+ThermalEnvConfig.use_domain_rand    = True   # 파라미터 DR(R_e/K_t/C_* …, config 기본 범위)
+ThermalEnvConfig.use_cold_to_hot_cl = True   # cold→hot 커리큘럼(래퍼가 구동)
+ThermalEnvConfig.use_obs_noise      = True   # 하우징 센서 노이즈
+ThermalEnvConfig.use_obs_quantize   = True   # Dynamixel 1°C 정수 양자화(관측 only)
+
+# ── 초기 온도 분포 (첫 reset) ────────────────────────────────────────────
+#  첫 에피소드는 cold 에서 시작(보행 부트스트랩). 이후 온도는 장주기
+#  reseed 까지 낙상/과열 넘어 persist (= 내생 누적·자연냉각).
+#  주변온도(a_t)는 커리큘럼과 독립, 현실 랩 밴드에서만 샘플(변동 고려
+#  18~28°C). a_t 는 LPTN 냉각 sink — 커리큘럼으로 끌어올리면 sim-to-real
+#  괴리(하우징이 비현실적으로 안 식음). 항상 a_t ≤ h_t ≤ w_t 보장.
+ThermalDomainRandConfig.amb_range  = [18.0, 28.0]   # 주변(환경) 온도 [°C]
+ThermalDomainRandConfig.temp_range = [15.0, 30.0]   # (legacy) 미사용 폴백
+
+# ── cold→hot 커리큘럼 + 장주기 thermal reseed ────────────────────────────
+#  reseed 주기 = reseed_block_episodes × episode_length steps.
+#  10 × 1000 = 10,000 step(≈200 s ≈ 1.3·τ_w). 500M·1024env → per-env ≈ 49 회.
+#  φ=0.30: 앞 30%(~15 reseed) cold 부트스트랩, 이후 70%(~34) cold→hot 램프.
+#  reseed 시 외생 IC 주입은 "비관측 구간 동안 예열" 로 물리적 타당
+#  (매 낙상 점프 아님 → 커리큘럼 괴리 없음). per-env 위상 stagger 로
+#  배치 온도 다양성 보장(래퍼 내부 처리).
+ColdToHotCurriculumConfig.threshold_ratio      = 0.30
+ColdToHotCurriculumConfig.init_cold            = [15.0, 30.0]   # cold reseed 범위
+ColdToHotCurriculumConfig.init_hot             = [15.0, 60.0]   # hot reseed 범위(→권선 ~75°C, derate cliff 자극)
+ColdToHotCurriculumConfig.offset               = [0.0, 15.0]    # reseed 권선 오프셋
+ColdToHotCurriculumConfig.use_ep_sampling      = True
+ColdToHotCurriculumConfig.reseed_block_episodes = 10            # ★ 블록 배수(에피소드 단위)
+
+# ── 관측값 ───────────────────────────────────────────────────────────────
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]               # actor: 하우징(관측 가능)
+ThermalObsConfig.obs_w_clip_range = [25.0, 135.0]              # critic-privileged: 권선
+ThermalObsConfig.obs_num   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+ThermalObsConfig.obs_stack = 15
+
+# ── 열 보상 — 물리가중 Joule 비용 (기여 본체) ────────────────────────────
+#  −λ·Σ Q_w·(1−g_phys(ΔT_w)). g_phys=남은 토크능력 비율(derate와 동일
+#  물리, 임의 임계 0개). "지금 쏟는 줄열 × 이미 잃은 힘 비율" → cold≈0
+#  (자연 보행)/hot↑(매 줄 벌점). 순수물리(penalty 0)는 실패(왼다리 편향
+#  온도무관=창발 아님)했으므로 dense 물리신호 필요. balance항·sigmoid
+#  게이트는 해법처방/임의임계라 미사용. CBF/safety 는 ablation 레버(=0).
+ThermalRewardScales.heat_cost      = 0.01
+ThermalRewardScales.safety_penalty = 0.0     # CBF류 — ablation 보존
+ThermalRewardScales.cbf_penalty    = 0.0     # CBF류 — ablation 보존
+ThermalSafetyConfig.enabled        = False   # overheat 종료/-10 OFF (열 persist)
+
+# ── 액션공간 · ref-imitation 완화 (model_ours 전용; _T_Walk 뒤 파싱 →
+#    이 모델만 적용, baseline gin 무영향) ────────────────────────────────
+#  기존 ['leg'] → 팔/허리가 액션공간에 없어 ZMP ref 강제고정 → 상체
+#  보상행동 구조적 불가. waist/arm 추가해 도달 가능케 하고, 강한 다리
+#  imitation(5.0)을 완화해 gait 재구성(교대·스윙토크0·발목전략) 허용.
+#  ankle 은 'leg' 그룹 포함 → 자동 커버. 0(완전자유)는 학습난·flailing
+#  → 약 prior(0.3)+저크규제(1e-2)로 도달가능+학습가능(중립자세 규제일
+#  뿐 해법처방 아님 → 창발 프레이밍 유지). neck 제외(균형기여 적음).
+# obs 벡터에 last_act(크기=num_action)가 포함 → action_parts 확장 시
+# num_single_obs/privileged 도 같이 키워야 함(상수라 안 그러면 mjx_env
+# 의 zeros(obs_size−2·nact−num_action−6) 가 음수→크래시). 기본
+# 83/126(leg-only, num_action=12) + Δ16(waist2+arm14) = 99/142.
+ObsConfig.num_single_obs            = 99
+ObsConfig.num_single_privileged_obs = 142
+ActionConfig.action_parts          = ['leg', 'waist', 'arm']
+RewardScales.leg_motor_pos         = 0.5     # was 5.0 (ZMP 다리 prior 약화)
+RewardScales.arm_motor_pos         = 0.3     # 중립자세 약 prior
+RewardScales.waist_motor_pos       = 0.3
+RewardScales.arm_action_rate       = 0.01    # 저크 규제(flailing 억제)
+RewardScales.arm_action_acc        = 0.01
+RewardScales.waist_action_rate     = 0.01
+RewardScales.waist_action_acc      = 0.01

@@ -1,9 +1,21 @@
 import os
 
 os.environ["USE_JAX"] = "true"
-os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '.25'
+#os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '.25'
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=true"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
+
+# ── JAX/XLA GPU 메모리: 선점(preallocate) 끄기 ──────────────────────────
+#  기본값은 가용 GPU 메모리 대부분을 *시작 시 한 번에* 선점(≈전체 →
+#  플랫폼에 따라 120GB 등 전부 잡아버림). PREALLOCATE=false 로만 전환:
+#  큰 블록 선점 없이 *작업셋만큼만 점진* 할당하고(관측상 ≈12GB), 기본
+#  bfc 캐싱 할당기를 유지 → 느려지지 않음. (ALLOCATOR=platform 는 더
+#  적게 잡으나 cudaMalloc/Free 빈번으로 매우 느림 → 미사용.)
+#  절대 GB 캡 env 는 없음; MEM_FRACTION 은 총 VRAM 대비 비율이라
+#  플랫폼마다 달라 부적합. 반드시 jax import 이전. setdefault → 셸
+#  override 가능(특정 머신서 하드캡 원하면
+#  XLA_PYTHON_CLIENT_MEM_FRACTION=<f> 를 셸에서 지정).
+os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
 
 import argparse
 import functools
@@ -198,6 +210,57 @@ def log_metrics(
                 log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}} / {v_max:{fmt}}\n"""
             else:
                 log_string += f"""{f"{label}:":>{pad}} {v_avg:{fmt}}\n"""
+
+    # --- 2b. desync-강건 온도 로그 (temp_th_*) → 깔끔한 thermal/* wandb 키 ---
+    #  brax: eval/episode_<k> = Σ(ep). ÷avg_len → per-step 평균 = 비율/CDF/
+    #  시간평균(비동기 persist env 에서도 의미 보존; batch-mean 스미어 해소).
+    #  w_gt_* = 권선온도 분포 CDF, derate_*/overheat_fall = 행동률,
+    #  block_peak_w = reseed 블록 peak, hot/* = 커리큘럼 hot 구간 조건부.
+    _th = {
+        "wmax": "temp_th_wmax", "hmax": "temp_th_hmax",
+        "amb": "temp_th_amb", "block_peak_w": "temp_th_block_peak_w",
+        "derate_frac": "temp_th_derate_frac",
+        "derate_sev": "temp_th_derate_sev",
+        "overheat_fall": "temp_th_overheat_fall",
+        "w_gt_60": "temp_th_w_gt_60", "w_gt_75": "temp_th_w_gt_75",
+        "w_gt_90": "temp_th_w_gt_90", "w_gt_105": "temp_th_w_gt_105",
+        "w_gt_120": "temp_th_w_gt_120", "h_ge_spec": "temp_th_h_ge_spec",
+        "progress": "temp_th_progress",
+    }
+    th_vals = {}
+    for short, k in _th.items():
+        v = get_avg_temp(k)
+        if v is not None:
+            th_vals[short] = float(v)
+            log_data[f"thermal/{short}"] = float(v)
+    # E: hot 구간 조건부 비율 = E[hot·1[w>90]] / E[hot]
+    _hot = get_avg_temp("temp_th_hotmask")
+    _hotw = get_avg_temp("temp_th_hot_w_gt_90")
+    if _hot is not None and _hotw is not None and float(_hot) > 1e-6:
+        log_data["thermal/hot_w_gt_90"] = float(_hotw) / float(_hot)
+
+    if th_vals:
+        log_string += f"""{"[ Thermal (desync-robust) ]".center(width)}\n"""
+        if "wmax" in th_vals:
+            log_string += (
+                f"""{f"Winding peak (mean/block):":>{pad}} """
+                f"""{th_vals.get('wmax', float('nan')):.1f} / """
+                f"""{th_vals.get('block_peak_w', float('nan')):.1f} °C\n""")
+        wcdf = " ".join(
+            f"{t}:{th_vals.get('w_gt_'+t, 0.0):.2f}"
+            for t in ("60", "75", "90", "105", "120") if 'w_gt_'+t in th_vals
+        )
+        if wcdf:
+            log_string += f"""{f"Frac w_t> (CDF):":>{pad}} {wcdf}\n"""
+        if "derate_frac" in th_vals:
+            log_string += (
+                f"""{f"Derate frac/sev:":>{pad}} """
+                f"""{th_vals['derate_frac']:.3f} / """
+                f"""{th_vals.get('derate_sev', float('nan')):.3f}\n""")
+        if "overheat_fall" in th_vals:
+            log_string += (
+                f"""{f"Overheat-fall rate:":>{pad}} """
+                f"""{th_vals['overheat_fall']:.4f}\n""")
 
     # --- 3. 성능 지표 마무리 ---
     if num_steps > 0 and num_total_steps > 0:
@@ -502,6 +565,9 @@ def train(
         orbax_checkpointer.save(path, params, force=True, save_args=save_args)
         policy_path = os.path.join(path, "policy")
         model.save_params(policy_path, params)
+        # thermal 진단은 brax 변환과 충돌(tracer leak) → in-train 제거.
+        # 저장된 체크포인트로 *오프라인* 검증: heat2torque/eval/thermal_diag.py
+        # (run/thermal_diag.sh). 학습엔 무영향.
 
     learning_rate_schedule_fn = optax.cosine_decay_schedule(
         train_cfg.learning_rate,
@@ -863,10 +929,10 @@ def main(args=None):
             add_domain_rand=False,
             **kwargs,
         )
-        # Curriculum Wrapper 적용
-        env = ThermalCurriculumWrapper(env, train_cfg.num_timesteps, train_cfg.num_envs, env_cfg)
-        eval_env = ThermalCurriculumWrapper(eval_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
-        test_env = ThermalCurriculumWrapper(test_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg)
+        # Curriculum Wrapper 적용 (episode_length → 장주기 reseed 블록 산출)
+        env = ThermalCurriculumWrapper(env, train_cfg.num_timesteps, train_cfg.num_envs, env_cfg, episode_length=train_cfg.episode_length)
+        eval_env = ThermalCurriculumWrapper(eval_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg, episode_length=train_cfg.episode_length)
+        test_env = ThermalCurriculumWrapper(test_env, train_cfg.num_timesteps, train_cfg.num_envs, eval_cfg, episode_length=train_cfg.episode_length)
 
 
     else:

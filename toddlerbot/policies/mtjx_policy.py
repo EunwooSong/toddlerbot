@@ -180,7 +180,12 @@ class MTJXPolicy(BasePolicy, policy_name="mtjx"):
             )
             make_policy = ppo_networks.make_inference_fn(ppo_network)
 
-            if len(self.ckpt) > 0:
+            if len(self.ckpt) > 0 and os.path.isfile(self.ckpt):
+                # Explicit checkpoint file path (e.g. mtj_gui.sh passing a
+                # toddlerbot/policies/checkpoints/thermal_walk_<model>_policy
+                # file directly). Load as-is, bypassing run-name mangling.
+                policy_path = self.ckpt
+            elif len(self.ckpt) > 0:
                 run_name = f"{self.robot.name}_{policy_name}_ppo_{self.ckpt}"
                 policy_path = os.path.join("results", run_name, "best_policy")
                 if not os.path.exists(policy_path):
