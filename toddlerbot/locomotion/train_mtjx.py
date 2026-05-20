@@ -383,10 +383,16 @@ def get_body_mass_attr_range(
         tendon_invweight0_list.append(jnp.array(model.tendon_invweight0))
 
     # Return a dictionary where each key has a JAX array of all values across environments
+    # NOTE(2026-05-21): actuator_acc0 reverted to jnp.stack (was np.stack — bug).
+    # numpy 였을 때 domain_randomize() 의 body_mass_attr 루프
+    # (`isinstance(v, jnp.ndarray)`) 가 이 키를 스킵 → in_axes_dict 등록 안 됨
+    # → vmap 시 in_axes=None 으로 (num_envs, nu) 가 안 벗겨져 mjx 가 scan
+    # 입력 길이 = num_envs(1024) vs 기대 nu(30) mismatch 로 IndexError 발생
+    # (mjx≥3.2.x strict check). jnp 로 통일하면 다른 키들과 동일 경로 → fix.
     body_mass_attr_range: Dict[str, jax.Array | npt.NDArray[np.float32]] = {
         "body_mass": jnp.stack(body_mass_list),
         "body_inertia": jnp.stack(body_inertia_list),
-        "actuator_acc0": np.stack(actuator_acc0_list),
+        "actuator_acc0": jnp.stack(actuator_acc0_list),
         "body_invweight0": jnp.stack(body_invweight0_list),
         "body_subtreemass": jnp.stack(body_subtreemass_list),
         "dof_M0": jnp.stack(dof_M0_list),
