@@ -15,7 +15,7 @@ ThermalEnvConfig.use_hard_const = False    # 하드 클리핑 미사용(전압�
 # ── 초기 권선온도 처리 ───────────────────────────────────────────────────
 ThermalEnvConfig.use_w_offset = True       # 권선 = 하우징 + offset 로 초기화
 ThermalEnvConfig.use_rand_w   = False
-ThermalEnvConfig.offset = [0.0, 15.0]      # 권선 오프셋 [°C] (첫 reset 용)
+ThermalEnvConfig.offset = [0.0, 20.0]      # 권선 오프셋 [°C] (첫 reset 용) — 운용 상한 80°C(derate 활성)까지 노출
 
 # ── DR / 커리큘럼 / 노이즈 토글 ──────────────────────────────────────────
 ThermalEnvConfig.use_domain_rand    = True   # 파라미터 DR(R_e/K_t/C_* …, config 기본 범위)
@@ -32,21 +32,39 @@ ThermalEnvConfig.use_obs_quantize   = True   # Dynamixel 1°C 정수 양자화(�
 ThermalDomainRandConfig.amb_range  = [18.0, 28.0]   # 주변(환경) 온도 [°C]
 ThermalDomainRandConfig.temp_range = [15.0, 30.0]   # (legacy) 미사용 폴백
 
-# ── cold→hot 커리큘럼 + 장주기 thermal reseed ────────────────────────────
-#  reseed 주기 = reseed_block_episodes × episode_length steps.
-#  10 × 1000 = 10,000 step(≈200 s ≈ 1.3·τ_w). 500M·1024env → per-env ≈ 49 회.
-#  φ=0.30: 앞 30%(~15 reseed) cold 부트스트랩, 이후 70%(~34) cold→hot 램프.
-#  reseed 시 외생 IC 주입은 "비관측 구간 동안 예열" 로 물리적 타당
-#  (매 낙상 점프 아님 → 커리큘럼 괴리 없음). per-env 위상 stagger 로
-#  배치 온도 다양성 보장(래퍼 내부 처리).
-ColdToHotCurriculumConfig.threshold_ratio      = 0.30
-ColdToHotCurriculumConfig.init_cold            = [15.0, 30.0]   # cold reseed 범위
-ColdToHotCurriculumConfig.init_hot             = [15.0, 60.0]   # hot reseed 범위(→권선 ~75°C, derate cliff 자극)
-ColdToHotCurriculumConfig.offset               = [0.0, 15.0]    # reseed 권선 오프셋
-ColdToHotCurriculumConfig.use_ep_sampling      = True
-ColdToHotCurriculumConfig.reseed_block_episodes = 10            # ★ 블록 배수(에피소드 단위)
+# ── Slow cold→hot 커리큘럼 + 장주기 thermal reseed (복구·2026-05-21) ────
+#  이전(broad_latch+15% warmup) 시도는 56% 시점 freeze-collapse(고온 env
+#  에선 멈춤 학습) 로 실패. 폐기 사유였던 "9%에서 cold-overfit" 진단은
+#  사실 slow-curr 의 *설계대로* 9%가 아직 pure-cold 단계인 것을 가리킨
+#  것일 뿐 — 동일 설정 다른 런(model_ours_20260520_024830, xcplfcs7)이
+#  reward 330, 92.8% 생존, core_max 100°C 로 *완주 성공* 확인됨.
+#  → slow-curr 그대로 복구. reseed_block 만 10→30(블록=600s≈τ_h)으로
+#  키워 housing 시정수까지 블록 내 정상상태 도달 → 장기 발열 credit
+#  assignment 강화.
+#
+#  - threshold_ratio=0.30: 첫 30% cold (보행 부트스트랩), 이후 linear ramp.
+#  - init_cold=[15,30] / init_hot=[15,60] / offset=[0,15]: 학습 분포.
+#  - reseed_block = 30 EP × 1000 step = 30,000 step ≈ 600 s ≈ 1·τ_h.
+#    per-env 위상 stagger(래퍼 처리). 500M·1024env → per-env ~16 reseed.
+#  - persistence: 블록 내 낙상/과열 모두 thermal_state 보존(brax AutoReset
+#    이 pose/obs 만 복원, thermal 은 tmjx 가 제어).
+ColdToHotCurriculumConfig.threshold_ratio       = 0.30
+# 운용 분포 매칭: 하한 20°C (방치 모터 idle), 상한 60°C (heavy use 직전).
+# 이전 [15,*] 은 하한 < amb_low(18) → 클리핑되어 dead value. 20 으로 올려
+# 의미 명료화. 평균 effect 작지만(a_t<20 envs 에서 h pile-up 감소) 깔끔.
+ColdToHotCurriculumConfig.init_cold             = [20.0, 30.0]
+ColdToHotCurriculumConfig.init_hot              = [20.0, 60.0]
+# winding gap [0, 20] = housing 위 0~20°C — hot phase IC 의 winding 최댓값
+# = 60+20 = 80°C (derate 활성 영역). xcplfcs7 검증런 core_max 100°C 이내라
+# 학습 범위 안. 이전 [0,15] 의 75°C 대비 +5°C → thermal stress 시드 강화.
+ColdToHotCurriculumConfig.offset                = [0.0, 20.0]
+ColdToHotCurriculumConfig.use_ep_sampling       = True
+ColdToHotCurriculumConfig.reseed_block_episodes = 30            # 10→30 (200s→600s≈τ_h)
 
 # ── 관측값 ───────────────────────────────────────────────────────────────
+# 센서 노이즈: 가우시안 N(0, σ²). σ=1.0 → 68% within ±1, ~5% ±2(가끔),
+# ~0.3% ±3(드물게). latch 와 actor obs 가 *같은 reading* 공유(h_sensed).
+ThermalNoiseConfig.h_t_noise      = 1.0
 ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]               # actor: 하우징(관측 가능)
 ThermalObsConfig.obs_w_clip_range = [25.0, 135.0]              # critic-privileged: 권선
 ThermalObsConfig.obs_num   = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
@@ -65,23 +83,25 @@ ThermalSafetyConfig.enabled        = False   # overheat 종료/-10 OFF (열 pers
 
 # ── 액션공간 · ref-imitation 완화 (model_ours 전용; _T_Walk 뒤 파싱 →
 #    이 모델만 적용, baseline gin 무영향) ────────────────────────────────
-#  기존 ['leg'] → 팔/허리가 액션공간에 없어 ZMP ref 강제고정 → 상체
-#  보상행동 구조적 불가. waist/arm 추가해 도달 가능케 하고, 강한 다리
-#  imitation(5.0)을 완화해 gait 재구성(교대·스윙토크0·발목전략) 허용.
-#  ankle 은 'leg' 그룹 포함 → 자동 커버. 0(완전자유)는 학습난·flailing
-#  → 약 prior(0.3)+저크규제(1e-2)로 도달가능+학습가능(중립자세 규제일
-#  뿐 해법처방 아님 → 창발 프레이밍 유지). neck 제외(균형기여 적음).
-# obs 벡터에 last_act(크기=num_action)가 포함 → action_parts 확장 시
-# num_single_obs/privileged 도 같이 키워야 함(상수라 안 그러면 mjx_env
+#  실측(이전 런): arm 을 액션공간에 넣으니 cold·hot 무관 *어떤 자세로
+#  고정* — 약한 imitation(0.3)+약한 열압력(λ=0.01)+CoG 멀어 다리부하 증가
+#  의 *지역 최적* = 굳혀버림이 reward 최대. 즉 팔 자유도가 열-적응에
+#  쓰이지 않고 그냥 *학습을 망가뜨림* (cold 때 ZMP swing 도 사라짐).
+#  → **arm 제외, ['leg','waist']** 만. waist 는 CoG 가까이라 다리부하 안
+#  주면서 lateral lean 으로 leg 부하 분산 → 효과적 상체 자유도. arm 은
+#  action_parts 에서 빠지면 자동으로 ZMP ref 추종(PD) → cold/hot 무관
+#  자연 스윙. 추후 λ 충분히 키워 열압력 강해지면 arm 재도입 검토.
+# obs 벡터에 last_act(크기=num_action)가 포함 → action_parts 변동 시
+# num_single_obs/privileged 도 같이 조정 필요(상수라 안 그러면 mjx_env
 # 의 zeros(obs_size−2·nact−num_action−6) 가 음수→크래시). 기본
-# 83/126(leg-only, num_action=12) + Δ16(waist2+arm14) = 99/142.
-ObsConfig.num_single_obs            = 99
-ObsConfig.num_single_privileged_obs = 142
-ActionConfig.action_parts          = ['leg', 'waist', 'arm']
+# 83/126(leg-only, num_action=12) + Δ2(waist만) = **85/128**.
+ObsConfig.num_single_obs            = 85
+ObsConfig.num_single_privileged_obs = 128
+ActionConfig.action_parts          = ['leg', 'waist']
 RewardScales.leg_motor_pos         = 0.5     # was 5.0 (ZMP 다리 prior 약화)
-RewardScales.arm_motor_pos         = 0.3     # 중립자세 약 prior
-RewardScales.waist_motor_pos       = 0.3
-RewardScales.arm_action_rate       = 0.01    # 저크 규제(flailing 억제)
-RewardScales.arm_action_acc        = 0.01
-RewardScales.waist_action_rate     = 0.01
+RewardScales.waist_motor_pos       = 0.3     # 중립자세 약 prior
+RewardScales.waist_action_rate     = 0.01    # 저크 규제(flailing 억제)
 RewardScales.waist_action_acc      = 0.01
+# arm 은 action_parts 에서 제외 → ref(ZMP swing) 자동 추종 → cold/hot
+# 무관 자연 보행 팔 움직임. arm_motor_pos/action_rate 오버라이드 불필요
+# (액션 영향 없음 → 보상 deviation 측정해도 0). baseline 값 그대로 사용.

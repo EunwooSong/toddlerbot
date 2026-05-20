@@ -5,17 +5,15 @@ os.environ["USE_JAX"] = "true"
 os.environ["XLA_FLAGS"] = "--xla_gpu_triton_gemm_any=true"
 os.environ["SDL_AUDIODRIVER"] = "dummy"
 
-# ── JAX/XLA GPU 메모리: 선점(preallocate) 끄기 ──────────────────────────
-#  기본값은 가용 GPU 메모리 대부분을 *시작 시 한 번에* 선점(≈전체 →
-#  플랫폼에 따라 120GB 등 전부 잡아버림). PREALLOCATE=false 로만 전환:
-#  큰 블록 선점 없이 *작업셋만큼만 점진* 할당하고(관측상 ≈12GB), 기본
-#  bfc 캐싱 할당기를 유지 → 느려지지 않음. (ALLOCATOR=platform 는 더
-#  적게 잡으나 cudaMalloc/Free 빈번으로 매우 느림 → 미사용.)
-#  절대 GB 캡 env 는 없음; MEM_FRACTION 은 총 VRAM 대비 비율이라
-#  플랫폼마다 달라 부적합. 반드시 jax import 이전. setdefault → 셸
-#  override 가능(특정 머신서 하드캡 원하면
-#  XLA_PYTHON_CLIENT_MEM_FRACTION=<f> 를 셸에서 지정).
-os.environ.setdefault("XLA_PYTHON_CLIENT_PREALLOCATE", "false")
+# ── JAX/XLA GPU 메모리: 분할 단편화 방지(MEM_FRACTION) ─────────────────
+#  과거: PREALLOCATE=false 로 *증분 할당* → 단편화 누적 → cuSolver 가
+#  큰 contiguous 행렬 필요할 때 "INTERNAL: cuSolver internal error" 로
+#  죽음(brax PPO 학습 epoch 2+ 에서 재현됨, 2026-05-20 ).
+#  해결: PREALLOCATE=true(JAX 기본) + MEM_FRACTION 으로 **시작 시 1회
+#  큰 덩어리** 선점 → 단편화 0, cuSolver INTERNAL 사라짐.
+#  값 산정: 16GB·0.75 ≈ 12GB(사용자 관측 작업셋과 일치). VRAM 다른
+#  머신은 셸에서 XLA_PYTHON_CLIENT_MEM_FRACTION 으로 override.
+os.environ.setdefault("XLA_PYTHON_CLIENT_MEM_FRACTION", "0.75")
 
 import argparse
 import functools
@@ -238,6 +236,30 @@ def log_metrics(
     _hotw = get_avg_temp("temp_th_hot_w_gt_90")
     if _hot is not None and _hotw is not None and float(_hot) > 1e-6:
         log_data["thermal/hot_w_gt_90"] = float(_hotw) / float(_hot)
+
+    # --- split_eval 버킷 진단 (eval 전용 — train 에선 cold_*만 0/0=skip) ---
+    #  reset 직후 절반 cold(ambient) + 절반 hot([40,60]+offset). 각 메트릭은
+    #  state.metrics 에 x·mask 로 푸시되고 brax 가 episode-sum → /avg_len 후
+    #  Σ(x·mask)/Σ(mask) = 조건부 평균.
+    #    eval/hot_reward, eval/cold_reward     : 정책 보상 (총합)
+    #    eval/hot_lin_vel, eval/cold_lin_vel   : 보행 속도 보상 (freeze 진단 핵심)
+    #    eval/hot_fall,   eval/cold_fall       : 낙상률 (per-step)
+    #    eval/hot_wmax,   eval/cold_wmax       : 권선 peak (열 노출도)
+    #    eval/hot_derate_sev, eval/cold_derate_sev : 토크 derate 정도
+    #    eval/hot_frac                         : 실측 hot 버킷 비율 (균형 sanity)
+    def _cond_mean(num_key: str, den_key: str, wandb_key: str):
+        n = get_avg_temp(num_key); d = get_avg_temp(den_key)
+        if n is not None and d is not None and float(d) > 1e-6:
+            log_data[wandb_key] = float(n) / float(d)
+
+    for stat in ('reward', 'lin_vel', 'fall', 'wmax', 'derate_sev'):
+        _cond_mean(f'temp_th_b_hot_{stat}',  'temp_th_b_hot_mask',
+                   f'eval/hot_{stat}')
+        _cond_mean(f'temp_th_b_cold_{stat}', 'temp_th_b_cold_mask',
+                   f'eval/cold_{stat}')
+    _hf = get_avg_temp('temp_th_b_hot_mask')
+    if _hf is not None:
+        log_data['eval/hot_frac'] = float(_hf)
 
     if th_vals:
         log_string += f"""{"[ Thermal (desync-robust) ]".center(width)}\n"""
@@ -600,6 +622,10 @@ def train(
         ppo.train,
         num_timesteps=train_cfg.num_timesteps,
         num_evals=train_cfg.num_evals,
+        # eval 환경 수 — split_eval 분할 정밀도 향상 (brax 기본 128→512).
+        # 1σ ≈ 0.5/√512 ≈ ±2.2% (epoch 당) → 다중 epoch 평균 →50% 수렴.
+        # eval 시간 ~4× (학습 전체 시간 ~5-10% 증가).
+        num_eval_envs=512,
         episode_length=train_cfg.episode_length,
         unroll_length=train_cfg.unroll_length,
         num_minibatches=train_cfg.num_minibatches,
@@ -892,12 +918,21 @@ def main(args=None):
 
         e = ThermalConfig.EvalConfig()
         eval_cfg = TMJXConfig(env_cfg)
+        # split_eval 모드: wrapper.reset 직후 50:50 (bernoulli) cold/hot 버킷
+        # 즉시 배정 → cl_progress 의존성 제거. cold = ambient(h=w=a_t),
+        # hot = U[40,60] + offset[0,15] (학습 분포의 명확한 hot 절반).
+        eval_cfg.thermal_cfg.curriculum.seed_mode          = e.seed_mode
+        eval_cfg.thermal_cfg.curriculum.hot_seed_fraction  = e.hot_seed_fraction
+        eval_cfg.thermal_cfg.curriculum.hot_seed_h_range   = e.hot_seed_h_range
+        eval_cfg.thermal_cfg.curriculum.hot_seed_offset    = e.hot_seed_offset
+
+        # 레거시 필드 (split_eval 경로에선 무시되나 호환 유지)
         eval_cfg.thermal_cfg.curriculum.threshold_ratio = 1.0
         eval_cfg.thermal_cfg.curriculum.init_hot = e.temp_range
         eval_cfg.thermal_cfg.curriculum.init_cold = e.temp_range
         eval_cfg.thermal_cfg.curriculum.use_ep_sampling = e.use_ep_sampling
         eval_cfg.thermal_cfg.curriculum.offset = e.offset
-        
+
         eval_cfg.thermal_cfg.domain_rand.temp_range = e.temp_range
         eval_cfg.thermal_cfg.env.mode = e.mode
         eval_cfg.thermal_cfg.env.use_w_offset = e.use_w_offset

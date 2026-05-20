@@ -386,6 +386,12 @@ class MuJoCoThermalSim(MuJoCoSim):
                                  dtype=jnp.float32)
                 )
 
+            # GUI/sim-vs-real: 결정적 latch 유지 — 노이즈 없는 진실 h_t 를
+            # h_sensed 로 동기화(학습 경로는 get_thermal_obs 가 노이즈 갱신).
+            # 이 한 줄 없으면 reset 시점 h_sensed 가 stuck → latch 영영 안 됨.
+            self.thermal_state = self.thermal_state.replace(
+                h_sensed=self.thermal_state.h_t
+            )
             self.thermal_state = jit_fn(
                 self.thermal_state,
                 jnp.asarray(ctrl_np),
