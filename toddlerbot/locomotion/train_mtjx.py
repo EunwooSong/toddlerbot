@@ -257,9 +257,45 @@ def log_metrics(
                    f'eval/hot_{stat}')
         _cond_mean(f'temp_th_b_cold_{stat}', 'temp_th_b_cold_mask',
                    f'eval/cold_{stat}')
-    _hf = get_avg_temp('temp_th_b_hot_mask')
+    _hf = get_avg_temp('temp_th_b_hot_mask')   # = alive-time fraction in hot
+    _cf = get_avg_temp('temp_th_b_cold_mask')  # = alive-time fraction in cold
+    # alive-weighted fraction (이전 'hot_frac' — 정책이 hot 에서 빨리 낙상 시
+    # 작아짐). 진단 의미: "hot 환경에서 보낸 alive step 비율".
     if _hf is not None:
-        log_data['eval/hot_frac'] = float(_hf)
+        log_data['eval/hot_time_frac'] = float(_hf)
+        log_data['eval/hot_frac'] = float(_hf)   # legacy 호환 (deprecate 예정)
+
+    # ── 진단: hot vs cold 평균 생존 step 비율 ─────────────────────────────
+    # bernoulli(0.5) 가정 하: hot_mask_sum = 0.5·mean_alive_hot, 동일 cold.
+    # ratio = hot_mask_sum / cold_mask_sum = mean_alive_hot / mean_alive_cold.
+    # 1.0 = 동등, < 1.0 = hot 정책 약함 (낙상 빠름), > 1.0 = cold 가 더 빨리 낙상.
+    _hms = metrics.get('eval/episode_temp_th_b_hot_mask')
+    _cms = metrics.get('eval/episode_temp_th_b_cold_mask')
+    if _hms is not None and _cms is not None and float(_cms) > 1e-6:
+        log_data['eval/hot_alive_ratio'] = float(_hms) / float(_cms)
+
+    # ── Per-episode 환산 (eval/episode_reward 와 동일 척도, ~380 비교 가능) ──
+    # bernoulli hot_seed_fraction=0.5 가정 → frac_hot ≈ 0.5 (n=512 envs, 1σ ≈ ±2.2%).
+    # mean_R_hot (hot 버킷 1 env 당 episode 총 reward) = hot_reward_sum / 0.5 = 2·hot_reward_sum.
+    # 동일 episode 척도(eval/episode_reward 비교 가능)로 노출.
+    HOT_FRAC_NOMINAL = 0.5  # EvalConfig.hot_seed_fraction default
+    def _episode_total(stat: str, bucket: str):
+        sum_key = metrics.get(f'eval/episode_temp_th_b_{bucket}_{stat}')
+        if sum_key is None:
+            return None
+        # bernoulli 가정 (n=512 → 1σ ≈ 2.2%, 충분히 정확)
+        return float(sum_key) / HOT_FRAC_NOMINAL
+
+    for stat in ('reward', 'lin_vel', 'fall'):
+        for bucket in ('hot', 'cold'):
+            v = _episode_total(stat, bucket)
+            if v is not None:
+                log_data[f'eval/{bucket}_{stat}_episode'] = v
+
+    # 버킷별 평균 생존 step 수 (bernoulli=0.5 가정 → 2·mask_sum)
+    for bucket, mask_key in (('hot', _hms), ('cold', _cms)):
+        if mask_key is not None:
+            log_data[f'eval/{bucket}_avg_length'] = float(mask_key) / HOT_FRAC_NOMINAL
 
     if th_vals:
         log_string += f"""{"[ Thermal (desync-robust) ]".center(width)}\n"""
@@ -383,16 +419,10 @@ def get_body_mass_attr_range(
         tendon_invweight0_list.append(jnp.array(model.tendon_invweight0))
 
     # Return a dictionary where each key has a JAX array of all values across environments
-    # NOTE(2026-05-21): actuator_acc0 reverted to jnp.stack (was np.stack — bug).
-    # numpy 였을 때 domain_randomize() 의 body_mass_attr 루프
-    # (`isinstance(v, jnp.ndarray)`) 가 이 키를 스킵 → in_axes_dict 등록 안 됨
-    # → vmap 시 in_axes=None 으로 (num_envs, nu) 가 안 벗겨져 mjx 가 scan
-    # 입력 길이 = num_envs(1024) vs 기대 nu(30) mismatch 로 IndexError 발생
-    # (mjx≥3.2.x strict check). jnp 로 통일하면 다른 키들과 동일 경로 → fix.
     body_mass_attr_range: Dict[str, jax.Array | npt.NDArray[np.float32]] = {
         "body_mass": jnp.stack(body_mass_list),
         "body_inertia": jnp.stack(body_inertia_list),
-        "actuator_acc0": jnp.stack(actuator_acc0_list),
+        "actuator_acc0": np.stack(actuator_acc0_list),
         "body_invweight0": jnp.stack(body_invweight0_list),
         "body_subtreemass": jnp.stack(body_subtreemass_list),
         "dof_M0": jnp.stack(dof_M0_list),
@@ -490,10 +520,10 @@ def domain_randomize(
         **body_mass_attr,
     }
 
-    if body_mass_attr_range is not None:
-        sys = sys.replace(
-            actuator_acc0=body_mass_attr_range["actuator_acc0"][: rng.shape[0]]
-        )
+    # NOTE(2026-05-21): 이전 `sys.replace(actuator_acc0=...)` 라인 제거.
+    # `actuator_acc0` 는 mjx 버전마다 leaf/meta 처리 달라 cross-version
+    # 호환 불가 → `get_body_mass_attr_range` 에서도 dict 에 미포함.
+    # 다른 7개 body_mass_attr 는 정상 경로 (sys.tree_replace + in_axes=0).
 
     in_axes = jax.tree.map(lambda x: None, sys)
     in_axes = in_axes.tree_replace(in_axes_dict)
@@ -672,9 +702,30 @@ def train(
 
         last_ckpt_step = num_steps
 
-        episode_reward = float(metrics.get("eval/episode_reward", 0.0))
-        if episode_reward > best_episode_reward:
-            best_episode_reward = episode_reward
+        # ───── Best checkpoint = cold + hot 버킷 결합 reward ─────────────
+        # 모든 정책이 동일 high-fidelity eval physics 에서 cold(50%)+hot(50%)
+        # 평가. 양 버킷에서 동시에 잘하는 checkpoint 가 best (단순 평균이
+        # 아닌 *분할 평가* — split_eval 의 의의).
+        # log_metrics 가 eval/cold_reward, eval/hot_reward 를 생성 (대문자
+        # 키는 log_metrics 후처리에서 추가; 여기 metrics 는 raw brax 값이라
+        # episode_<…> prefix). raw 키로 직접 계산.
+        def _cm(num_key, den_key):
+            n = metrics.get(num_key); d = metrics.get(den_key)
+            if n is None or d is None or float(d) <= 1e-6:
+                return None
+            return float(n) / float(d)
+        avg_len = max(metrics.get("eval/avg_episode_length", 1.0), 1.0)
+        cold_rew = _cm("eval/episode_temp_th_b_cold_reward",
+                       "eval/episode_temp_th_b_cold_mask")
+        hot_rew  = _cm("eval/episode_temp_th_b_hot_reward",
+                       "eval/episode_temp_th_b_hot_mask")
+        # fallback: 버킷 메트릭 없으면 (legacy) 기존 episode_reward 사용
+        if cold_rew is not None and hot_rew is not None:
+            combined = cold_rew + hot_rew
+        else:
+            combined = float(metrics.get("eval/episode_reward", 0.0))
+        if combined > best_episode_reward:
+            best_episode_reward = combined
             best_ckpt_step = num_steps
 
         log_data = log_metrics(
@@ -924,13 +975,45 @@ def main(args=None):
 
         e = ThermalConfig.EvalConfig()
         eval_cfg = TMJXConfig(env_cfg)
-        # split_eval 모드: wrapper.reset 직후 50:50 (bernoulli) cold/hot 버킷
-        # 즉시 배정 → cl_progress 의존성 제거. cold = ambient(h=w=a_t),
-        # hot = U[40,60] + offset[0,15] (학습 분포의 명확한 hot 절반).
+        # ───── ★ High-fidelity eval physics (2026-05-21) ─────────────────
+        # 모든 정책(baseline / olaf / olaf_full / ours) 을 *동일* 고정밀
+        # 물리 환경(2-LPTN + voltage-saturation derate + inter-motor coupling
+        # + winding offset) 에서 평가. 학습 시 단순화된 물리(1-LPTN, no derate
+        # 등) 를 쓴 정책은 sim-to-real 갭이 eval 점수로 드러남 — 이 차이가
+        # paper 의 핵심 비교 narrative.
+        # 주의: Actor obs scope (obs_num, ThermalObsConfig) 는 *학습 그대로*
+        # 보존 — 정책 입력 shape mismatch 회피. 물리 시뮬레이션만 고정밀.
+        eval_cfg.thermal_cfg.env.model_order_2 = True   # 2-LPTN (high-fidelity)
+        eval_cfg.thermal_cfg.env.use_thermal   = True
+        eval_cfg.thermal_cfg.env.use_derate    = True   # voltage-sat 물리 reality
+        eval_cfg.thermal_cfg.env.use_coupling  = True   # inter-motor 열전달
+        eval_cfg.thermal_cfg.env.use_hard_const = False
+        eval_cfg.thermal_cfg.env.use_w_offset  = True   # winding ≠ housing
+        eval_cfg.thermal_cfg.env.use_rand_w    = False
+        eval_cfg.thermal_cfg.env.offset        = [0.0, 20.0]
+        # mode 재계산 (post_init 패턴 아니라 수동) — 위 플래그들로부터
+        from heat2torque.base import ThermalMode
+        eval_cfg.thermal_cfg.env.mode = (
+            ThermalMode.USE_DERATE | ThermalMode.USE_THERMAL
+            | ThermalMode.MODEL_ORDER_2 | ThermalMode.USE_COUPLING
+        )
+
+        # ───── 평가 reward = locomotion-only (정책간 동일 척도) ─────────
+        # 정책마다 다른 thermal reward 가중치로 학습했지만 eval 척도는 통일
+        # → cold/hot 버킷별 reward 는 보행 능력만 반영, thermal 측면은 별도
+        # 메트릭 (eval/{hot,cold}_{wmax,derate_sev,fall}) 으로 평가.
+        eval_cfg.thermal_cfg.reward.heat_cost      = 0.0
+        eval_cfg.thermal_cfg.reward.cbf_penalty    = 0.0
+        eval_cfg.thermal_cfg.reward.safety_penalty = 0.0
+        eval_cfg.thermal_cfg.safety.enabled        = False
+
+        # ───── split_eval: 50:50 cold/hot 버킷 ───────────────────────────
         eval_cfg.thermal_cfg.curriculum.seed_mode          = e.seed_mode
         eval_cfg.thermal_cfg.curriculum.hot_seed_fraction  = e.hot_seed_fraction
         eval_cfg.thermal_cfg.curriculum.hot_seed_h_range   = e.hot_seed_h_range
         eval_cfg.thermal_cfg.curriculum.hot_seed_offset    = e.hot_seed_offset
+        # persist_across_done 은 training 그대로 inherit (학습 환경 일치).
+        # baseline/olaf 는 False, ours 는 True → 정책이 학습된 thermal 흐름.
 
         # 레거시 필드 (split_eval 경로에선 무시되나 호환 유지)
         eval_cfg.thermal_cfg.curriculum.threshold_ratio = 1.0
@@ -940,17 +1023,8 @@ def main(args=None):
         eval_cfg.thermal_cfg.curriculum.offset = e.offset
 
         eval_cfg.thermal_cfg.domain_rand.temp_range = e.temp_range
-        eval_cfg.thermal_cfg.env.mode = e.mode
-        eval_cfg.thermal_cfg.env.use_w_offset = e.use_w_offset
-        eval_cfg.thermal_cfg.env.use_rand_w = e.use_rand_w
-        eval_cfg.thermal_cfg.env.offset = e.offset
-        eval_cfg.thermal_cfg.reward.safety_penalty = e.safety_penalty
-
-        # 하드 코딩으로 thermal 상태 정의
-        eval_cfg.thermal_cfg.env.use_derate = True
-        eval_cfg.thermal_cfg.env.use_thermal = True
-        eval_cfg.thermal_cfg.env.model_order_2 = True
-
+        # (이전 'use_derate=True / use_thermal=True / model_order_2=True'
+        #  중복 라인은 위 high-fidelity 블록으로 통합되어 제거됨.)
 
         eval_env = EnvClass(
             args.env,

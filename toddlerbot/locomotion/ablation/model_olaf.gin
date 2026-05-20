@@ -1,0 +1,77 @@
+# ============================================================================
+#  model_olaf — faithful Olaf [Müller 2025] 재현 (비교군)
+#  Olaf 원작: 1st-order LPTN, **neck joint 만** monitoring/CBF, no torque
+#  derating. 본 paper TABLE I 분류: Thermal Aware ✓ / Torque Derating ✗ /
+#  1 controlled motor / 1st-order thermal model.
+#
+#  Toddlerbot 의 neck 모터 = motor index [0, 1] (neck_yaw_drive,
+#  neck_pitch_act; XC330, spec_t_max=70°C). 보행 task 에서 neck 은 거의
+#  안 가열되므로 *제한된 모니터링 scope* 가 Olaf 의 limitation 으로
+#  드러나는 baseline (paper 본문의 핵심 비교 narrative).
+#
+#  학습 인프라(액션 공간·DR·노이즈·curriculum·eval split·hyperparams) 는
+#  model_ours 와 *동일* — 변수 격리 (변하는 것: 열모델 차수, derate, reward,
+#  monitoring scope, thermal persistence 4가지만).
+# ============================================================================
+
+# ── 열모델: 1st-order, no coupling, no derate ─────────────────────────────
+ThermalEnvConfig.model_order_2  = False     # 1st-order (Olaf 충실)
+ThermalEnvConfig.use_thermal    = True      # 열 dynamics 시뮬은 ON (obs/CBF 입력)
+ThermalEnvConfig.use_derate     = False     # 전압-포화 OFF (Olaf 는 raw torque)
+ThermalEnvConfig.use_hard_const = False
+ThermalEnvConfig.use_coupling   = False     # 1저항 = 모터간 커플링 무관
+
+# ── 권선 오프셋 무관 (1st-order = winding 없음) ──────────────────────────
+ThermalEnvConfig.use_w_offset = False
+ThermalEnvConfig.use_rand_w   = False
+ThermalEnvConfig.offset = [0.0, 0.0]
+
+# ── DR / 노이즈 / 양자화 (model_ours 와 동일) ────────────────────────────
+ThermalEnvConfig.use_domain_rand    = True
+ThermalEnvConfig.use_cold_to_hot_cl = True
+ThermalEnvConfig.use_obs_noise      = True
+ThermalEnvConfig.use_obs_quantize   = True
+ThermalNoiseConfig.h_t_noise        = 1.0
+
+# ── 초기 온도 분포 (커리큘럼) — model_ours 와 *동일* (인프라 격리) ───────
+ThermalDomainRandConfig.amb_range  = [18.0, 28.0]
+ThermalDomainRandConfig.temp_range = [15.0, 30.0]            # legacy 폴백
+
+ColdToHotCurriculumConfig.threshold_ratio       = 0.30
+ColdToHotCurriculumConfig.init_cold             = [20.0, 30.0]
+ColdToHotCurriculumConfig.init_hot              = [20.0, 60.0]
+ColdToHotCurriculumConfig.offset                = [0.0, 0.0]   # 1차 = winding 무관
+ColdToHotCurriculumConfig.use_ep_sampling       = True
+ColdToHotCurriculumConfig.reseed_block_episodes = 30
+
+# ── ★ Thermal persistence OFF (Olaf 학습 디자인) ─────────────────────────
+#  매 episode 종료(낙상/timeout)마다 thermal IC 새로 sample.
+#  4-족 paper (Qian 2026) 도 동일 패턴(pure DR, episode-fresh). 우리
+#  model_ours 의 persist (block-scale credit) 와 학습 디자인 측면에서
+#  대비되는 ablation 축. block 값은 무의미하지만 호환 위해 30 유지.
+ColdToHotCurriculumConfig.persist_across_done   = False
+
+# ── 관측: neck 2 모터 만 (Olaf 충실) ─────────────────────────────────────
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_w_clip_range = [25.0, 135.0]    # 사용 안 됨 (1차)
+# 2 motors × stack 15 = 30 thermal frames (vs 우리 30×15=450)
+ThermalObsConfig.obs_num   = [0, 1]   # neck_yaw_drive, neck_pitch_act
+ThermalObsConfig.obs_stack = 15
+
+# ── Reward: Olaf CBF only (heat_cost / safety / safety_wrapper OFF) ──────
+#  Olaf Eq. 5c: -|τ| + γ·(T_max − T) ≥ 0
+#  cbf_penalty = 0.2 (Olaf 논문 값), γ = 0.312 (cbf_margin)
+ThermalRewardScales.heat_cost      = 0.0     # 우리 물리가중 OFF
+ThermalRewardScales.cbf_penalty    = 0.2     # Olaf CBF λ
+ThermalRewardScales.safety_penalty = 0.0
+ThermalEnvConfig.cbf_margin        = 0.312
+ThermalSafetyConfig.enabled        = False
+
+# ── Action 공간 · imitation 가중 (model_ours 와 동일) ────────────────────
+ObsConfig.num_single_obs            = 85       # thermal 부분은 자동 작아짐
+ObsConfig.num_single_privileged_obs = 128
+ActionConfig.action_parts          = ['leg', 'waist']
+RewardScales.leg_motor_pos         = 0.5
+RewardScales.waist_motor_pos       = 0.3
+RewardScales.waist_action_rate     = 0.01
+RewardScales.waist_action_acc      = 0.01
