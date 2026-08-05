@@ -1,0 +1,63 @@
+# Unitree G1 periodic squat (Phase 1, no thermal).
+# Reward recipe from the squat reward research (2026-08-06): joint-space
+# reference tracking as the main signal + explicit root-height tracking;
+# walking-specific rewards (feet_air_time/clearance, stand_still, lin_vel_z
+# command-tracking) are OFF — they contradict a both-feet-planted,
+# intentionally-height-varying task.
+
+CommandsConfig.command_range = [
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [0.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-0.5, 0.5],
+    [-1.0, 1.0]
+]
+CommandsConfig.deadzone = [0.05]
+CommandsConfig.command_obs_indices = [5, 6, 7]
+
+# root pose / stillness
+RewardScales.torso_quat = 1.0
+RewardScales.torso_roll = 1.0
+RewardScales.torso_pitch = 1.0
+RewardScales.torso_pos = 0.5
+RewardScales.torso_height = 1.0
+RewardScales.lin_vel_xy = 1.0
+RewardScales.lin_vel_z = 0.0
+RewardScales.ang_vel_xy = 1.0
+RewardScales.ang_vel_z = 2.0
+
+# reference tracking (main signal) + frozen upper body hold
+RewardScales.leg_motor_pos = 5.0
+RewardScales.arm_motor_pos = 0.5
+RewardScales.waist_motor_pos = 0.5
+
+# double-support constraints
+RewardScales.feet_contact = 2.0
+RewardScales.feet_air_time = 0.0
+RewardScales.feet_clearance = 0.0
+RewardScales.feet_distance = 0.5
+RewardScales.feet_slip = 0.05
+RewardScales.stand_still = 0.0
+RewardScales.align_ground = 1.0
+
+RewardScales.collision = 0.1
+RewardScales.energy = 0.05
+
+ObsConfig.num_single_obs = 81
+ObsConfig.num_single_privileged_obs = 123
+
+# squat dips 0.786 -> 0.636 m; band leaves ~0.09 m below the normal bottom
+RewardsConfig.healthy_z_range = [0.55, 0.90]
+RewardsConfig.min_feet_y_dist = 0.15
+RewardsConfig.max_feet_y_dist = 0.32
+RewardsConfig.torso_roll_range = [-0.1, 0.1]
+RewardsConfig.torso_pitch_range = [-0.15, 0.15]
+
+SimConfig.iterations = 2
+SimConfig.ls_iterations = 6
+
+# one squat (down + up) per cycle, within the 5 s user spec
+ActionConfig.cycle_time = 4.0

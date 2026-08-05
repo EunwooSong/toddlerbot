@@ -84,6 +84,7 @@ class MJXConfig:
     @dataclass
     class RewardScales:
         torso_pos: float = 0.0  # 1.0
+        torso_height: float = 0.0  # phase-referenced root-z tracking (squat)
         torso_quat: float = 0.0  # 1.0
         torso_roll: float = 0.0
         torso_pitch: float = 0.0
