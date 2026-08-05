@@ -129,6 +129,18 @@ class WalkZMPReferenceG1(WalkZMPReference):
         self.left_hip_roll_rel_idx = 1
         self.right_hip_roll_rel_idx = 7
 
+        # G1's ankle ranges are small (roll +-0.26, pitch -0.87..0.52): the
+        # flat-foot IK saturates them at command extremes (|vx|=1, |vy|=0.5).
+        # Clip the leg reference to joint limits — the foot-orientation ref
+        # gives up flatness at extreme strides (the kinematic analogue of
+        # heel/toe lift) instead of pulling the policy past its limits.
+        leg_names = [n for n in self.robot.joint_ordering
+                     if self.robot.joint_groups[n] == "leg"]
+        self.leg_limit_lo = np.array(
+            [self.robot.joint_limits[n][0] for n in leg_names], dtype=np.float32)
+        self.leg_limit_hi = np.array(
+            [self.robot.joint_limits[n][1] for n in leg_names], dtype=np.float32)
+
         single_double_ratio = 2.0
         self.zmp_walk = ZMPWalkG1(self.robot, self.cycle_time, single_double_ratio)
         self.single_support_ratio = single_double_ratio / (single_double_ratio + 1)
@@ -146,8 +158,15 @@ class WalkZMPReferenceG1(WalkZMPReference):
                     leg_joint_pos_ref_list,
                 ) = pickle.load(f)
         else:
+            # G1 command grid — MUST cover walk_g1.gin command_range[5:8]
+            # (parent default is Toddlerbot-scale vx<=0.4: out-of-grid commands
+            # would snap to the nearest key and de-sync gait from the velocity
+            # reward target). Coarser 0.05 interval keeps the table compact.
             lookup_keys, com_ref_list, leg_joint_pos_ref_list, stance_mask_ref_list = (
-                self.zmp_walk.build_lookup_table()
+                self.zmp_walk.build_lookup_table(
+                    command_range=[[-1.0, 1.0], [-0.5, 0.5], [-1.0, 1.0]],
+                    interval=0.05,
+                )
             )
             with open(lookup_table_path, "wb") as f:
                 pickle.dump(
@@ -314,6 +333,7 @@ class WalkZMPReferenceG1(WalkZMPReference):
         leg_joint_pos = conditional_update(
             is_static_pose, get_leg_joint_pos_init, get_leg_joint_pos
         )
+        leg_joint_pos = np.clip(leg_joint_pos, self.leg_limit_lo, self.leg_limit_hi)
         joint_pos = inplace_update(joint_pos, self.leg_joint_indices, leg_joint_pos)
         motor_pos = inplace_update(motor_pos, self.leg_motor_indices, leg_joint_pos)
 

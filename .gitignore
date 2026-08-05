@@ -184,4 +184,4 @@ toddlerbot/policies/checkpoints/teleop_model*
 # Experiment logs
 experiment_log_*.txt
 logs/
-output_policy/
+output_policy/toddlerbot/descriptions/*/walk_zmp_lookup_table.pkl

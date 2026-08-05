@@ -41,3 +41,8 @@ RewardsConfig.max_feet_y_dist = 0.32
 # 5/8 if contacts go unstable, lower only with sim-quality evidence.
 SimConfig.iterations = 2
 SimConfig.ls_iterations = 6
+
+# 2 Hz cadence: at vx=1.0 the 0.72 s cycle gives 0.36 m steps, beyond the
+# flat-foot IK envelope of G1's ankle range; 0.5 s keeps the whole command
+# range feasible (with the 5 cm walking crouch in config offsets).
+ActionConfig.cycle_time = 0.5
