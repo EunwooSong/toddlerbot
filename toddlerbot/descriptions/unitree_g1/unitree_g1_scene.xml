@@ -1,0 +1,23 @@
+<mujoco model="unitree_g1 scene">
+  <include file="unitree_g1.xml"/>
+  <statistic meansize="0.02"/>
+  <asset>
+    <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3" markrgb="0.8 0.8 0.8" width="300" height="300"/>
+    <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+  </asset>
+  <worldbody>
+    <geom name="floor" size="0 0 0.01" type="plane" material="groundplane"/>
+  </worldbody>
+  <contact>
+    <pair name="ank_roll_link_col1_floor" geom1="ank_roll_link_col1" geom2="floor" solref="0.008 1" friction="1 1" condim="3"/>
+    <pair name="ank_roll_link_col2_floor" geom1="ank_roll_link_col2" geom2="floor" solref="0.008 1" friction="1 1" condim="3"/>
+    <pair name="ank_roll_link_col3_floor" geom1="ank_roll_link_col3" geom2="floor" solref="0.008 1" friction="1 1" condim="3"/>
+    <pair name="ank_roll_link_2_col1_floor" geom1="ank_roll_link_2_col1" geom2="floor" solref="0.008 1" friction="1 1" condim="3"/>
+    <pair name="ank_roll_link_2_col2_floor" geom1="ank_roll_link_2_col2" geom2="floor" solref="0.008 1" friction="1 1" condim="3"/>
+    <pair name="ank_roll_link_2_col3_floor" geom1="ank_roll_link_2_col3" geom2="floor" solref="0.008 1" friction="1 1" condim="3"/>
+    <pair name="p_ank_roll_link_colbox_ank_roll_link_2_colbox" geom1="ank_roll_link_colbox" geom2="ank_roll_link_2_colbox" condim="1"/>
+    <pair name="p_ank_roll_link_colbox_right_shin_collision" geom1="ank_roll_link_colbox" geom2="right_shin_collision" condim="1"/>
+    <pair name="p_ank_roll_link_2_colbox_left_shin_collision" geom1="ank_roll_link_2_colbox" geom2="left_shin_collision" condim="1"/>
+    <pair name="p_left_shin_collision_right_shin_collision" geom1="left_shin_collision" geom2="right_shin_collision" condim="1"/>
+  </contact>
+</mujoco>

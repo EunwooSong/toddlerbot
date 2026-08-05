@@ -1,0 +1,43 @@
+# Unitree G1 walk (Phase 1, no thermal). Reward scales identical to walk.gin
+# (baseline preserved); only robot-dependent parameters differ.
+
+CommandsConfig.command_range = [
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [0.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-0.5, 0.5],
+    [-1.0, 1.0]
+]
+CommandsConfig.deadzone = [0.05]
+CommandsConfig.command_obs_indices = [5, 6, 7]
+
+RewardScales.torso_quat = 1.0
+RewardScales.torso_roll = 0.5
+RewardScales.torso_pitch = 0.5
+RewardScales.lin_vel_xy = 5.0
+RewardScales.ang_vel_xy = 2.0
+RewardScales.ang_vel_z = 5.0
+RewardScales.feet_air_time = 500.0
+RewardScales.feet_distance = 1.0
+RewardScales.feet_slip = 0.05
+RewardScales.feet_clearance = 1.0
+RewardScales.collision = 0.1
+RewardScales.stand_still = 1.0
+RewardScales.align_ground = 1.0
+RewardScales.energy = 0.05
+
+# --- G1-specific geometry/solver ---
+ObsConfig.num_single_obs = 81
+ObsConfig.num_single_privileged_obs = 123
+
+RewardsConfig.healthy_z_range = [0.5, 1.0]
+RewardsConfig.min_feet_y_dist = 0.15
+RewardsConfig.max_feet_y_dist = 0.32
+
+# Between Toddlerbot's Newton 1/4 and menagerie g1_mjx's 5/8; raise toward
+# 5/8 if contacts go unstable, lower only with sim-quality evidence.
+SimConfig.iterations = 2
+SimConfig.ls_iterations = 6

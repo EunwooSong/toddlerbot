@@ -1,0 +1,92 @@
+{
+  "pelvis": {
+    "has_collision": false
+  },
+  "left_hip_pitch_link": {
+    "has_collision": false
+  },
+  "left_hip_roll_link": {
+    "has_collision": false
+  },
+  "left_hip_yaw_link": {
+    "has_collision": false
+  },
+  "left_knee_link": {
+    "has_collision": true
+  },
+  "left_ankle_pitch_link": {
+    "has_collision": false
+  },
+  "left_ank_roll_link": {
+    "has_collision": true
+  },
+  "right_hip_pitch_link": {
+    "has_collision": false
+  },
+  "right_hip_roll_link": {
+    "has_collision": false
+  },
+  "right_hip_yaw_link": {
+    "has_collision": false
+  },
+  "right_knee_link": {
+    "has_collision": true
+  },
+  "right_ankle_pitch_link": {
+    "has_collision": false
+  },
+  "right_ank_roll_link": {
+    "has_collision": true
+  },
+  "waist_yaw_link": {
+    "has_collision": false
+  },
+  "waist_roll_link": {
+    "has_collision": false
+  },
+  "torso_link": {
+    "has_collision": false
+  },
+  "left_shoulder_pitch_link": {
+    "has_collision": false
+  },
+  "left_shoulder_roll_link": {
+    "has_collision": false
+  },
+  "left_shoulder_yaw_link": {
+    "has_collision": false
+  },
+  "left_elbow_link": {
+    "has_collision": false
+  },
+  "left_wrist_roll_link": {
+    "has_collision": false
+  },
+  "left_wrist_pitch_link": {
+    "has_collision": false
+  },
+  "left_wrist_yaw_link": {
+    "has_collision": false
+  },
+  "right_shoulder_pitch_link": {
+    "has_collision": false
+  },
+  "right_shoulder_roll_link": {
+    "has_collision": false
+  },
+  "right_shoulder_yaw_link": {
+    "has_collision": false
+  },
+  "right_elbow_link": {
+    "has_collision": false
+  },
+  "right_wrist_roll_link": {
+    "has_collision": false
+  },
+  "right_wrist_pitch_link": {
+    "has_collision": false
+  },
+  "right_wrist_yaw_link": {
+    "has_collision": false
+  }
+}
