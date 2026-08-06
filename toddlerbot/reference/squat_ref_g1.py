@@ -53,7 +53,14 @@ class SquatG1Reference(WalkZMPReferenceG1):
         motor_pos = self.default_motor_pos.copy()
 
         phase = (time_curr / self.cycle_time) % 1.0
-        depth = self.squat_depth * 0.5 * (1.0 - np.cos(2 * np.pi * phase))
+        # command[2] in [0,1] scales squat depth (per-episode randomized in
+        # SquatG1Env — stateless depth curriculum; eval/render set it to 1.0)
+        depth = (
+            self.squat_depth
+            * command[2]
+            * 0.5
+            * (1.0 - np.cos(2 * np.pi * phase))
+        )
         leg_joint_pos = self.com_ik(-depth)
         leg_joint_pos = np.clip(
             leg_joint_pos, self.leg_joint_limits[:, 0], self.leg_joint_limits[:, 1]

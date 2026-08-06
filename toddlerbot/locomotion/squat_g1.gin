@@ -16,21 +16,25 @@ CommandsConfig.command_range = [
     [-1.0, 1.0]
 ]
 CommandsConfig.deadzone = [0.05]
-CommandsConfig.command_obs_indices = [5, 6, 7]
+# command[2] = squat-depth fraction (per-episode curriculum), observable
+CommandsConfig.command_obs_indices = [2, 5, 6, 7]
+CommandsConfig.resample_time = 100.0
 
-# root pose / stillness
+# Reward-mass rebalance (2026-08-06 per-term diagnosis): standing still
+# earned ~11.8/step from stillness bonuses while ignoring the reference cost
+# only ~1.6/step — tracking terms up, wobble penalties halved.
 RewardScales.torso_quat = 1.0
-RewardScales.torso_roll = 1.0
-RewardScales.torso_pitch = 1.0
+RewardScales.torso_roll = 0.5
+RewardScales.torso_pitch = 0.5
 RewardScales.torso_pos = 0.5
-RewardScales.torso_height = 1.0
-RewardScales.lin_vel_xy = 1.0
+RewardScales.torso_height = 3.0
+RewardScales.lin_vel_xy = 0.5
 RewardScales.lin_vel_z = 0.0
-RewardScales.ang_vel_xy = 1.0
-RewardScales.ang_vel_z = 2.0
+RewardScales.ang_vel_xy = 0.5
+RewardScales.ang_vel_z = 1.0
 
 # reference tracking (main signal) + frozen upper body hold
-RewardScales.leg_motor_pos = 5.0
+RewardScales.leg_motor_pos = 30.0
 RewardScales.arm_motor_pos = 0.5
 RewardScales.waist_motor_pos = 0.5
 
@@ -53,8 +57,8 @@ RewardScales.collision = 0.1
 RewardScales.energy = 2e-4
 RewardScales.motor_torque = 5e-5
 
-ObsConfig.num_single_obs = 81
-ObsConfig.num_single_privileged_obs = 123
+ObsConfig.num_single_obs = 82
+ObsConfig.num_single_privileged_obs = 124
 
 # squat dips 0.786 -> 0.636 m; lower bound leaves 0.136 m below the normal
 # bottom (0.55 made descent termination-risky and favored standing still)

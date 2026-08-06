@@ -65,14 +65,19 @@ class SquatG1Env(WalkEnv, env_name="squat_g1"):
     def _sample_command(
         self, rng: jax.Array, last_command: Optional[jax.Array] = None
     ) -> jax.Array:
-        return jnp.zeros(8)
+        """Zero locomotion commands; command[2] = squat-depth fraction,
+        randomized per episode (U[0.2, 1.0]) as a stateless curriculum:
+        shallow squats are easy balance problems that bootstrap deep ones
+        (reward diagnosis showed open-loop full-depth tracking falls in 1 s).
+        The fraction is observable (command_obs_indices includes 2)."""
+        depth_frac = jax.random.uniform(rng, (), minval=0.2, maxval=1.0)
+        return jnp.zeros(8).at[2].set(depth_frac)
 
     def _reward_torso_height(
         self, pipeline_state: base.State, info: dict[str, Any], action: jax.Array
     ) -> jax.Array:
-        """Track the phase-referenced pelvis height: z_ref(phase) =
-        z_top - depth * (1 - cos(2*pi*phase)) / 2, using the cos component of
-        the phase signal.
+        """Track the phase- and depth-referenced pelvis height: z_ref =
+        z_top - depth_frac * DEPTH * (1 - cos(2*pi*phase)) / 2.
 
         Kernel width matters: with k=800 (sigma 3.5 cm) the reward is
         exp(-18)~=0 at the stand-vs-bottom error (0.15 m) — zero gradient, so
@@ -80,8 +85,7 @@ class SquatG1Env(WalkEnv, env_name="squat_g1"):
         (sigma ~14 cm) keeps a usable gradient over the whole squat range;
         literature kernels are even wider (GMT uses k~=1)."""
         cos_ph = info["phase_signal"][1]
-        z_ref = self.motion_ref.torso_pos_init[2] - self.SQUAT_DEPTH * 0.5 * (
-            1.0 - cos_ph
-        )
+        depth = self.SQUAT_DEPTH * info["command"][2]
+        z_ref = self.motion_ref.torso_pos_init[2] - depth * 0.5 * (1.0 - cos_ph)
         z = pipeline_state.x.pos[0][2]
         return jnp.exp(-50.0 * (z - z_ref) ** 2)
