@@ -72,10 +72,16 @@ class SquatG1Env(WalkEnv, env_name="squat_g1"):
     ) -> jax.Array:
         """Track the phase-referenced pelvis height: z_ref(phase) =
         z_top - depth * (1 - cos(2*pi*phase)) / 2, using the cos component of
-        the phase signal. exp kernel sigma ~= 3.5 cm."""
+        the phase signal.
+
+        Kernel width matters: with k=800 (sigma 3.5 cm) the reward is
+        exp(-18)~=0 at the stand-vs-bottom error (0.15 m) — zero gradient, so
+        the policy converged to standing still (verified, run 104723). k=50
+        (sigma ~14 cm) keeps a usable gradient over the whole squat range;
+        literature kernels are even wider (GMT uses k~=1)."""
         cos_ph = info["phase_signal"][1]
         z_ref = self.motion_ref.torso_pos_init[2] - self.SQUAT_DEPTH * 0.5 * (
             1.0 - cos_ph
         )
         z = pipeline_state.x.pos[0][2]
-        return jnp.exp(-800.0 * (z - z_ref) ** 2)
+        return jnp.exp(-50.0 * (z - z_ref) ** 2)
