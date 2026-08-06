@@ -71,6 +71,11 @@ RewardsConfig.torso_pitch_range = [-0.15, 0.15]
 SimConfig.iterations = 2
 SimConfig.ls_iterations = 6
 
+# both feet stay planted — the walk-scale pushes (0.5 m/s every ~2 s) cannot
+# be recovered by stepping and just teach fear of the deep-squat region
+DomainRandConfig.push_lin_vel = 0.2
+DomainRandConfig.push_ang_vel = 0.4
+
 # one squat (down + up) per cycle, within the 5 s user spec
 ActionConfig.cycle_time = 4.0
 
