@@ -23,6 +23,7 @@ class PPOConfig:
     entropy_cost: float = 5e-4
     clipping_epsilon: float = 0.2
     num_envs: int = 1024
+    num_eval_envs: int = 128  # 학습 중 eval (H200 9.4h vs 5h tradeoff). final eval 은 별도 512.
     render_interval: int = 50
     batch_size: int = 256
     num_minibatches: int = 4

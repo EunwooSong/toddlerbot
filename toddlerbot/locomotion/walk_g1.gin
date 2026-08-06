@@ -27,7 +27,14 @@ RewardScales.feet_clearance = 1.0
 RewardScales.collision = 0.1
 RewardScales.stand_still = 1.0
 RewardScales.align_ground = 1.0
-RewardScales.energy = 0.05
+
+# tau-dimensional penalties renormalized for G1 actuator scale (~50x
+# Toddlerbot torque, so tau^2 terms blow up ~2500x): with walk.gin values the
+# energy term alone is ~-10^3/step vs survival +10 and the optimum is going
+# limp (verified: 200M run fell backward at 0.9 s). Same relative magnitude
+# as Toddlerbot, applied identically to every future G1 variant.
+RewardScales.energy = 2e-4
+RewardScales.motor_torque = 5e-5
 
 # --- G1-specific geometry/solver ---
 ObsConfig.num_single_obs = 81
