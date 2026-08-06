@@ -74,9 +74,9 @@ SimConfig.ls_iterations = 6
 # one squat (down + up) per cycle, within the 5 s user spec
 ActionConfig.cycle_time = 4.0
 
-# ROOT CAUSE of runs 1-4 plateauing at ~3 cm dip: brax PPO actions are
-# tanh-bounded to [-1,1], so with action_scale=0.25 leg targets are confined
-# to default +-0.25 rad — the full squat needs knee +1.13 rad, physically
-# unreachable (reachable-set dip ceiling ~3 cm matches all observed runs).
-# 1.3 puts full depth at |action|<=0.87 with margin.
-ActionConfig.action_scale = 1.3
+# Runs 1-4 capped at ~3 cm dip: tanh-bounded actions x scale 0.25 cannot
+# reach the squat (knee needs +1.13 rad). Run 5 with scale 1.3 NaN'd (violent
+# exploration). Resolution: SquatG1Env.step rebases default_action to the
+# current leg REFERENCE (residual-on-reference), so 0.25 is again a gentle
+# correction band while the reference carries the excursion.
+ActionConfig.action_scale = 0.25

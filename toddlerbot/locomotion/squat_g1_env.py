@@ -62,6 +62,26 @@ class SquatG1Env(WalkEnv, env_name="squat_g1"):
             **kwargs,
         )
 
+    def step(self, state, action: jax.Array):
+        """Residual-on-reference action: rebase `default_action` to the leg
+        slice of the CURRENT reference each step, so the policy outputs a
+        +-action_scale correction around the squat trajectory instead of
+        around the static default pose.
+
+        Why: tanh-bounded actions with scale 0.25 cannot reach the squat
+        (runs 1-4 capped at ~3 cm dip), and raising the scale to 1.3 made
+        early exploration violent enough to NaN the physics (run 5). The
+        reference carries the large excursion; the policy only balances.
+        get_state_ref is pure (path state in, path state out), so the extra
+        call here does not double-integrate."""
+        time_curr = state.info["step"] * self.dt
+        state_ref = self.motion_ref.get_state_ref(
+            state.info["state_ref"], time_curr, state.info["command"]
+        )
+        leg_ref = jnp.asarray(state_ref)[self.ref_start_idx + self.leg_ref_indices]
+        state.info["default_action"] = leg_ref
+        return super().step(state, action)
+
     def _sample_command(
         self, rng: jax.Array, last_command: Optional[jax.Array] = None
     ) -> jax.Array:
