@@ -1,0 +1,139 @@
+# Unitree G1 walk — unitree_rl_gym recipe port (real-robot-proven weights).
+# Reward scales = g1_config.py values verbatim (their runtime multiplies all
+# scales by dt=0.02; we keep the relative ratios, PPO advantage normalization
+# absorbs the global factor). Positive-cost functions carry negative weights.
+
+CommandsConfig.command_range = [
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [0.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0],
+    [-1.0, 1.0]
+]
+CommandsConfig.deadzone = [0.05]
+CommandsConfig.command_obs_indices = [5, 6, 7]
+CommandsConfig.resample_time = 10.0
+CommandsConfig.zero_chance = 0.02
+CommandsConfig.turn_chance = 0.3
+
+# --- legged_gym G1 reward set ---
+RewardScales.lin_vel_xy = 1.0          # tracking_lin_vel (exp(-4 err^2))
+RewardScales.ang_vel_z = 0.5           # tracking_ang_vel
+RewardScales.lin_vel_z = -2.0          # overridden: v_z^2 cost
+RewardScales.ang_vel_xy = -0.05        # overridden: sum w_xy^2 cost
+RewardScales.orientation = -1.0
+RewardScales.base_height = -10.0
+RewardScales.dof_acc = -2.5e-7
+RewardScales.dof_vel = -0.001
+RewardScales.leg_action_rate = -0.01
+RewardScales.dof_pos_limits = -5.0
+RewardScales.survival = 0.15           # alive
+RewardScales.hip_pos = -1.0
+RewardScales.contact_no_vel = -0.2
+RewardScales.feet_swing_height = -20.0
+RewardScales.feet_contact = 0.18       # overridden: phase-contact match
+
+# --- switch off the Toddlerbot walk set (incl. nonzero dataclass defaults) ---
+RewardScales.leg_motor_pos = 0.0
+RewardScales.motor_torque = 0.0
+RewardScales.energy = 0.0
+RewardScales.leg_action_acc = 0.0
+RewardScales.feet_air_time = 0.0
+RewardScales.feet_distance = 0.0
+RewardScales.feet_slip = 0.0
+RewardScales.feet_clearance = 0.0
+RewardScales.collision = 0.0
+RewardScales.stand_still = 0.0
+RewardScales.align_ground = 0.0
+RewardScales.torso_quat = 0.0
+RewardScales.torso_roll = 0.0
+RewardScales.torso_pitch = 0.0
+
+# --- G1 geometry / obs / solver ---
+ObsConfig.num_single_obs = 47
+ObsConfig.num_single_privileged_obs = 50
+
+RewardsConfig.healthy_z_range = [0.5, 1.0]
+RewardsConfig.min_feet_y_dist = 0.15
+RewardsConfig.max_feet_y_dist = 0.32
+# exp(-4 err^2) == legged_gym/playground exp(-err^2/0.25)
+RewardsConfig.tracking_sigma = 4.0
+
+# gait clock period (unitree_rl_gym: fixed 0.8 s, stance duty 0.55)
+ActionConfig.cycle_time = 0.8
+
+SimConfig.iterations = 2
+SimConfig.ls_iterations = 6
+
+DomainRandConfig.push_interval_s = 5
+DomainRandConfig.push_lin_vel = 1.0
+
+# --- PPO hyperparameters matched to this recipe ---
+# Our defaults were tuned for ZMP imitation learning (strong supervision);
+# pure reward shaping needs legged_gym/playground-scale exploration and
+# horizon. Kept in gin (not --config-override) so every G1 variant inherits
+# them identically and the run name stays within the 255-byte filename limit.
+PPOConfig.num_envs = 4096          # legged_gym G1: 4096 (playground: 8192)
+PPOConfig.num_minibatches = 16     # batch_size 256 * 16 == num_envs
+PPOConfig.learning_rate = 0.0003   # playground G1 (ours was 1e-4)
+PPOConfig.entropy_cost = 0.01      # legged_gym G1 (ours was 5e-4)
+PPOConfig.discounting = 0.99       # horizon 2 s at 50 Hz (0.97 -> 0.67 s)
+
+# ============================================================
+# Thermal config — copied verbatim from ablation/re_model_g.gin
+# (paper 'Ours'): 2-LPTN_cpl + derate + action-scoped obs +
+# heat_cost 0.005 + random per-episode IC. Only the obs sizes
+# and G1 spec_t_max (85 C casing, from actuators.json) differ.
+# ============================================================
+
+# ── 열모델: 2-LPTN + coupling + derate (ours 와 동일) ──────────────────
+ThermalEnvConfig.model_order_2  = True
+ThermalEnvConfig.use_thermal    = True
+ThermalEnvConfig.use_derate     = True
+ThermalEnvConfig.use_coupling   = True
+ThermalEnvConfig.use_hard_const = False
+
+# ── 초기 권선온도 ────────────────────────────────────────────────────────
+ThermalEnvConfig.use_w_offset = True
+ThermalEnvConfig.use_rand_w   = False
+ThermalEnvConfig.offset       = [0.0, 20.0]
+
+# ── DR / 노이즈 / 양자화 ─────────────────────────────────────────────────
+ThermalEnvConfig.use_domain_rand    = True
+ThermalEnvConfig.use_cold_to_hot_cl = True
+ThermalEnvConfig.use_obs_noise      = True
+ThermalEnvConfig.use_obs_quantize   = True
+ThermalNoiseConfig.h_t_noise        = 1.0
+
+# ── 주변온도 (DR) ────────────────────────────────────────────────────────
+ThermalDomainRandConfig.amb_range  = [18.0, 28.0]
+ThermalDomainRandConfig.temp_range = [15.0, 30.0]
+
+# ── ★ RANDOM reseed (H 대비 핵심 차이) ─────────────────────────────────
+ColdToHotCurriculumConfig.seed_mode             = "curriculum"
+ColdToHotCurriculumConfig.use_tier_split        = False
+ColdToHotCurriculumConfig.threshold_ratio       = 0.0
+ColdToHotCurriculumConfig.init_cold             = [20.0, 70.0]
+ColdToHotCurriculumConfig.init_hot              = [20.0, 70.0]
+ColdToHotCurriculumConfig.offset                = [0.0, 20.0]
+ColdToHotCurriculumConfig.use_ep_sampling       = True
+ColdToHotCurriculumConfig.reseed_block_episodes = 30
+ColdToHotCurriculumConfig.persist_across_done   = False
+
+# ── 관측 — action-scoped (leg+waist 14) ────────────────────────────────
+ThermalObsConfig.obs_h_clip_range = [25.0, 85.0]
+ThermalObsConfig.obs_w_clip_range = [25.0, 135.0]
+ThermalObsConfig.obs_num   = []
+ThermalObsConfig.obs_stack = 15
+
+# ── Thermal reward — 우리 물리가중 Joule cost (ours 와 동일) ──────────
+ThermalRewardScales.heat_cost      = 0.005
+ThermalRewardScales.safety_penalty = 0.0
+ThermalRewardScales.cbf_penalty    = 0.0
+ThermalSafetyConfig.enabled        = False
+
+# ── Obs size + action_parts ─────────────────────────────────────────────
+ActionConfig.action_parts           = ['leg']

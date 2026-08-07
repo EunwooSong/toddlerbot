@@ -1,3 +1,11 @@
+"""Unitree G1 periodic squat: both feet planted, CoM dips on a cosine cycle,
+upper body frozen (L-shape arms), legs-only action.
+
+Recipe design (2026-08-06 reward research + 7 diagnosed runs): joint-space
+reference tracking as the main signal, an explicit phase-referenced
+root-height term, and residual-on-reference actions. Details on each choice
+live on the method that implements it.
+"""
 from typing import Any, Optional
 
 import jax
@@ -11,38 +19,18 @@ from toddlerbot.reference.squat_ref_g1 import SquatG1Reference
 from toddlerbot.sim.robot import Robot
 
 
-class SquatG1Env(WalkEnv, env_name="squat_g1"):
-    """Periodic squat on Unitree G1: both feet planted, CoM dips 0.15 m on a
-    4 s cosine cycle, upper body frozen (L-shape arms), legs-only action.
+class SquatG1Recipe:
+    """Squat recipe (depth curriculum, residual actions, height reward).
 
-    Inherits WalkEnv so the shared reward catalog (torso_roll/pitch,
-    feet_slip, feet_distance, ...) stays available; walking-only rewards are
-    zeroed in squat_g1.gin. Reward design rationale: see squat reward research
-    (2026-08-06) — joint-space tracking (leg_motor_pos) as the main signal
-    plus an explicit phase-referenced root-height term (torso_height), the
-    literature-standard split (e.g. GMT, Multi-Gait SAMP ~10:1 joint:height).
+    Engine-agnostic mixin so the thermal env (`_T_Squat_G1`) and the plain env
+    (`squat_g1`) share one definition — the recipe must not drift between the
+    thermal ablation and its baseline. Mirrors WalkG1Recipe.
     """
 
     SQUAT_DEPTH = 0.15  # m; ankle-dorsiflexion-bounded (see squat_ref_g1)
 
-    def __init__(
-        self,
-        name: str,
-        robot: Robot,
-        cfg: MJXConfig,
-        ref_motion_type: str = "squat",
-        fixed_base: bool = False,
-        add_noise: bool = True,
-        add_domain_rand: bool = True,
-        **kwargs: Any,
-    ):
-        motion_ref = SquatG1Reference(
-            robot,
-            cfg.sim.timestep * cfg.action.n_frames,
-            cycle_time=cfg.action.cycle_time,
-            squat_depth=self.SQUAT_DEPTH,
-        )
-
+    def _squat_setup(self, robot, cfg):
+        """Recipe state that must be built after the base env __init__."""
         self.cycle_time = jnp.array(cfg.action.cycle_time)
         self.torso_roll_range = cfg.rewards.torso_roll_range
         self.torso_pitch_range = cfg.rewards.torso_pitch_range
@@ -50,16 +38,12 @@ class SquatG1Env(WalkEnv, env_name="squat_g1"):
         self.min_feet_y_dist = cfg.rewards.min_feet_y_dist
         self.max_feet_y_dist = cfg.rewards.max_feet_y_dist
 
-        MJXEnv.__init__(
-            self,
-            name,
+    def make_motion_ref(self, robot, cfg):
+        return SquatG1Reference(
             robot,
-            cfg,
-            motion_ref,
-            fixed_base=fixed_base,
-            add_noise=add_noise,
-            add_domain_rand=add_domain_rand,
-            **kwargs,
+            cfg.sim.timestep * cfg.action.n_frames,
+            cycle_time=cfg.action.cycle_time,
+            squat_depth=self.SQUAT_DEPTH,
         )
 
     def step(self, state, action: jax.Array):
@@ -109,3 +93,37 @@ class SquatG1Env(WalkEnv, env_name="squat_g1"):
         z_ref = self.motion_ref.torso_pos_init[2] - depth * 0.5 * (1.0 - cos_ph)
         z = pipeline_state.x.pos[0][2]
         return jnp.exp(-50.0 * (z - z_ref) ** 2)
+
+
+class SquatG1Env(SquatG1Recipe, WalkEnv, env_name="squat_g1"):
+    """Squat on the plain (no-thermal) stack.
+
+    Inherits WalkEnv for the shared reward catalog (torso_roll/pitch,
+    feet_slip, feet_distance, ...); walking-only rewards are zeroed in
+    squat_g1.gin.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        robot: Robot,
+        cfg: MJXConfig,
+        ref_motion_type: str = "squat",
+        fixed_base: bool = False,
+        add_noise: bool = True,
+        add_domain_rand: bool = True,
+        **kwargs: Any,
+    ):
+        # WalkEnv.__init__ is bypassed (it builds a ZMP walk reference)
+        MJXEnv.__init__(
+            self,
+            name,
+            robot,
+            cfg,
+            self.make_motion_ref(robot, cfg),
+            fixed_base=fixed_base,
+            add_noise=add_noise,
+            add_domain_rand=add_domain_rand,
+            **kwargs,
+        )
+        self._squat_setup(robot, cfg)
