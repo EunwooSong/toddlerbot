@@ -82,9 +82,9 @@
       "kff2_real": 0.0,
       "kp_sim": 100.0,
       "kd_sim": 2.0,
-      "tau_max": 139.0,
-      "q_dot_tau_max": 16.0,
-      "q_dot_max": 20.0,
+      "tau_max": 88.0,
+      "q_dot_tau_max": 25.6,
+      "q_dot_max": 32.0,
       "gear_ratio": 1.0
     },
     "left_hip_yaw": {
@@ -163,7 +163,7 @@
       "kff2_real": 0.0,
       "kp_sim": 40.0,
       "kd_sim": 2.0,
-      "tau_max": 50.0,
+      "tau_max": 35.0,
       "q_dot_tau_max": 24.0,
       "q_dot_max": 30.0,
       "gear_ratio": 1.0
@@ -190,7 +190,7 @@
       "kff2_real": 0.0,
       "kp_sim": 40.0,
       "kd_sim": 2.0,
-      "tau_max": 50.0,
+      "tau_max": 35.0,
       "q_dot_tau_max": 24.0,
       "q_dot_max": 30.0,
       "gear_ratio": 1.0
@@ -244,9 +244,9 @@
       "kff2_real": 0.0,
       "kp_sim": 100.0,
       "kd_sim": 2.0,
-      "tau_max": 139.0,
-      "q_dot_tau_max": 16.0,
-      "q_dot_max": 20.0,
+      "tau_max": 88.0,
+      "q_dot_tau_max": 25.6,
+      "q_dot_max": 32.0,
       "gear_ratio": 1.0
     },
     "right_hip_yaw": {
@@ -325,7 +325,7 @@
       "kff2_real": 0.0,
       "kp_sim": 40.0,
       "kd_sim": 2.0,
-      "tau_max": 50.0,
+      "tau_max": 35.0,
       "q_dot_tau_max": 24.0,
       "q_dot_max": 30.0,
       "gear_ratio": 1.0
@@ -352,7 +352,7 @@
       "kff2_real": 0.0,
       "kp_sim": 40.0,
       "kd_sim": 2.0,
-      "tau_max": 50.0,
+      "tau_max": 35.0,
       "q_dot_tau_max": 24.0,
       "q_dot_max": 30.0,
       "gear_ratio": 1.0
@@ -379,9 +379,9 @@
       "kff2_real": 0.0,
       "kp_sim": 200.0,
       "kd_sim": 5.0,
-      "tau_max": 50.0,
-      "q_dot_tau_max": 25.6,
-      "q_dot_max": 32.0,
+      "tau_max": 35.0,
+      "q_dot_tau_max": 24.0,
+      "q_dot_max": 30.0,
       "gear_ratio": 1.0
     },
     "waist_yaw": {
@@ -433,9 +433,9 @@
       "kff2_real": 0.0,
       "kp_sim": 200.0,
       "kd_sim": 5.0,
-      "tau_max": 50.0,
-      "q_dot_tau_max": 25.6,
-      "q_dot_max": 32.0,
+      "tau_max": 35.0,
+      "q_dot_tau_max": 24.0,
+      "q_dot_max": 30.0,
       "gear_ratio": 1.0
     },
     "left_shoulder_pitch": {
@@ -596,8 +596,8 @@
       "kp_sim": 20.0,
       "kd_sim": 1.0,
       "tau_max": 5.0,
-      "q_dot_tau_max": 29.6,
-      "q_dot_max": 37.0,
+      "q_dot_tau_max": 17.6,
+      "q_dot_max": 22.0,
       "gear_ratio": 1.0
     },
     "left_wrist_yaw": {
@@ -623,8 +623,8 @@
       "kp_sim": 20.0,
       "kd_sim": 1.0,
       "tau_max": 5.0,
-      "q_dot_tau_max": 29.6,
-      "q_dot_max": 37.0,
+      "q_dot_tau_max": 17.6,
+      "q_dot_max": 22.0,
       "gear_ratio": 1.0
     },
     "right_shoulder_pitch": {
@@ -785,8 +785,8 @@
       "kp_sim": 20.0,
       "kd_sim": 1.0,
       "tau_max": 5.0,
-      "q_dot_tau_max": 29.6,
-      "q_dot_max": 37.0,
+      "q_dot_tau_max": 17.6,
+      "q_dot_max": 22.0,
       "gear_ratio": 1.0
     },
     "right_wrist_yaw": {
@@ -812,8 +812,8 @@
       "kp_sim": 20.0,
       "kd_sim": 1.0,
       "tau_max": 5.0,
-      "q_dot_tau_max": 29.6,
-      "q_dot_max": 37.0,
+      "q_dot_tau_max": 17.6,
+      "q_dot_max": 22.0,
       "gear_ratio": 1.0
     }
   }

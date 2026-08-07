@@ -71,10 +71,33 @@ RewardsConfig.torso_pitch_range = [-0.15, 0.15]
 SimConfig.iterations = 2
 SimConfig.ls_iterations = 6
 
-# both feet stay planted — the walk-scale pushes (0.5 m/s every ~2 s) cannot
-# be recovered by stepping and just teach fear of the deep-squat region
+# --- platform-scale params: G1 reference, not Toddlerbot ------------------
+# Velocity-tracking kernel: legged_gym G1 exp(-err^2/0.25) == our
+# exp(-4*err^2). The 100.0 default was calibrated for Toddlerbot's 0.2 m/s
+# scale and is punitive at G1's 1 m/s scale.
+RewardsConfig.tracking_sigma = 4.0
+
+# unitree_rl_gym g1_config.py domain_rand (hardware-deployed ranges).
+# body_mass_range is an ABSOLUTE kg delta on the torso in our code, so the
+# Toddlerbot default (+-0.2 kg) was ~+-1% on a 33 kg G1 — effectively no mass
+# randomization at all.
+DomainRandConfig.friction_range = [0.1, 1.25]
+DomainRandConfig.body_mass_range = [-1.0, 3.0]
+DomainRandConfig.push_interval_s = 5
+# kept below the G1 recipe's 1.5 m/s: both feet stay planted, so a push that
+# can only be absorbed by stepping just teaches fear of the deep-squat region
 DomainRandConfig.push_lin_vel = 0.2
 DomainRandConfig.push_ang_vel = 0.4
+# (kp/kd/tau/q_dot randomization has no legged_gym counterpart — our addition,
+# kept: it is what makes the actuator envelope robust for sim2real.)
+
+# PPO: same G1 recipe as walk_g1.gin so every G1 variant is comparable
+# (Toddlerbot defaults 1024 / 1e-4 / 5e-4 / 0.97 were tuned for ZMP imitation)
+PPOConfig.num_envs = 4096
+PPOConfig.num_minibatches = 16     # batch_size 256 * 16 == num_envs
+PPOConfig.learning_rate = 0.0003
+PPOConfig.entropy_cost = 0.01
+PPOConfig.discounting = 0.99
 
 # one squat (down + up) per cycle, within the 5 s user spec
 ActionConfig.cycle_time = 4.0
